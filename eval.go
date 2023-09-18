@@ -56,6 +56,18 @@ func Eval(scope Scope, termData Term) Term {
 					return fmt.Sprintf("%s%s", lhs, rhs)
 				}
 			}
+		case Sub:
+			lhsInt, rhsInt := toInt(lhs, rhs, "sub")
+			return new(big.Int).Sub(lhsInt, rhsInt)
+		case Mul:
+			lhsInt, rhsInt := toInt(lhs, rhs, "mul")
+			return new(big.Int).Mul(lhsInt, rhsInt)
+		case Div:
+			lhsInt, rhsInt := toInt(lhs, rhs, "div")
+			return new(big.Int).Div(lhsInt, rhsInt)
+		case Rem:
+			lhsInt, rhsInt := toInt(lhs, rhs, "rem")
+			return new(big.Int).Rem(lhsInt, rhsInt)
 		}
 	case KindBool:
 		var boolValue Print
