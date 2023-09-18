@@ -57,6 +57,9 @@ func Eval(scope Scope, termData Term) Term {
 			return new(big.Int).Mul(lhsInt, rhsInt)
 		case Div:
 			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue.Location)
+			if rhsInt.Cmp(big.NewInt(0)) == 0 {
+				Error(binaryValue.Location, "division by zero")
+			}
 			return new(big.Int).Div(lhsInt, rhsInt)
 		case Rem:
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
