@@ -230,3 +230,84 @@ func Eval(scope Scope, termData Term) Term {
 
 	return nil
 }
+
+func toInt(lhs interface{}, rhs interface{}, operation string) (*big.Int, *big.Int) {
+	var lhsInt int64
+	var rhsInt int64
+	var okLhs bool = false
+	var okRhs bool = false
+
+	if _, ok := lhs.(int64); ok {
+		lhsInt = lhs.(int64)
+		okLhs = true
+	}
+
+	if _, ok := rhs.(int64); ok {
+		rhsInt = rhs.(int64)
+		okRhs = true
+	}
+
+	if _, ok := lhs.(*big.Int); ok {
+		lhsInt = lhs.(*big.Int).Int64()
+		okLhs = true
+	}
+
+	if _, ok := rhs.(*big.Int); ok {
+		rhsInt = rhs.(*big.Int).Int64()
+		okRhs = true
+	}
+
+	if !okLhs || !okRhs {
+		message := fmt.Sprintf("Invalid %s operation", operation)
+		panic(message)
+	}
+
+	return big.NewInt(lhsInt), big.NewInt(rhsInt)
+}
+
+func toBool(lhs interface{}, rhs interface{}, operation string) (bool, bool) {
+	var okLhs bool = false
+	var okRhs bool = false
+
+	if _, ok := lhs.(int64); ok {
+		if lhs != 0 {
+			okLhs = true
+		}
+	}
+
+	if _, ok := rhs.(int64); ok {
+		if rhs != 0 {
+			okRhs = true
+		}
+	}
+
+	if _, ok := lhs.(string); ok {
+		if lhs != "" {
+			okLhs = true
+		}
+	}
+
+	if _, ok := rhs.(string); ok {
+		if rhs != "" {
+			okRhs = true
+		}
+	}
+
+	if _, ok := lhs.(bool); ok {
+		okLhs = lhs.(bool)
+	}
+
+	if _, ok := rhs.(bool); ok {
+		okRhs = rhs.(bool)
+	}
+
+	if lhs == nil {
+		okLhs = false
+	}
+
+	if rhs == nil {
+		okRhs = false
+	}
+
+	return okLhs, okRhs
+}
