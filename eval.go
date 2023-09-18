@@ -144,6 +144,58 @@ func Eval(scope Scope, termData Term) Term {
 		} else {
 			return Eval(scope, ifValue.Otherwise)
 		}
+	case KindFirst:
+		var firstValue First
+		var firstValueValue Tuple
+
+		err := mapstructure.Decode(termData, &firstValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		mapstructure.Decode(firstValue.Value, &firstValueValue)
+
+		if firstValueValue.Kind != KindTuple {
+			panic("Runtime error")
+		}
+		first := firstValueValue.First
+		value := Eval(scope, first)
+		return value
+	case KindSecond:
+		var secondValue Second
+		var secondValueValue Tuple
+
+		err := mapstructure.Decode(termData, &secondValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		mapstructure.Decode(secondValue.Value, &secondValueValue)
+
+		if secondValueValue.Kind != KindTuple {
+			panic("Runtime error")
+		}
+		second := secondValueValue.Second
+		value := Eval(scope, second)
+		return value
+	case KindTuple:
+		var tupleValue Tuple
+
+		err := mapstructure.Decode(termData, &tupleValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		first := Eval(scope, tupleValue.First)
+		second := Eval(scope, tupleValue.Second)
+
+		return fmt.Sprintf("(%v, %v)", first, second)
 		return value
 	}
 
