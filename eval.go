@@ -30,6 +30,33 @@ func Eval(scope Scope, termData Term) Term {
 		}
 
 		return strValue.Value
+	case KindBinary:
+		var binaryValue Binary
+
+		err := mapstructure.Decode(termData, &binaryValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		lhs := Eval(scope, binaryValue.LHS)
+		op := BinaryOp(binaryValue.Op)
+		rhs := Eval(scope, binaryValue.RHS)
+		switch op {
+		case Add:
+			if lhsInt, ok := lhs.(*big.Int); ok {
+				if rhsInt, ok := rhs.(*big.Int); ok {
+					return new(big.Int).Add(lhsInt, rhsInt)
+				}
+			} else {
+				if rhsInt, ok := rhs.(int64); ok {
+					return fmt.Sprintf("%s%d", lhs, rhsInt)
+				} else {
+					return fmt.Sprintf("%s%s", lhs, rhs)
+				}
+			}
+		}
 	case KindBool:
 		var boolValue Print
 		err := mapstructure.Decode(termData, &boolValue)
