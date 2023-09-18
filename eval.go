@@ -65,13 +65,9 @@ func Eval(scope Scope, termData Term) Term {
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
 			return new(big.Int).Rem(lhsInt, rhsInt)
 		case Eq:
-			lhsInt, rhsInt := toInt(lhs, rhs, "eq", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result == 0
+			return fmt.Sprintf("%v", lhs) == fmt.Sprintf("%v", rhs)
 		case Neq:
-			lhsInt, rhsInt := toInt(lhs, rhs, "neq", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result != 0
+			return fmt.Sprintf("%v", lhs) != fmt.Sprintf("%v", rhs)
 		case And:
 			lhsBool, rhsBool := toBool(lhs, rhs)
 			return lhsBool && rhsBool
