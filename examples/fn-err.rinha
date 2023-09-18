@@ -1,0 +1,4 @@
+let fib = fn(n, a, b) => {
+  print(n + a + b)
+};
+print(fib(1, 2, 3, 4))

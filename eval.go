@@ -172,6 +172,9 @@ func Eval(scope Scope, termData Term) Term {
 		decode(termData, &functionValue)
 
 		return func(args []Term, fScope Scope) Term {
+			if len(args) != len(functionValue.Parameters) {
+				Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
+			}
 			isolatedScope := Scope{}
 			for k, v := range fScope {
 				isolatedScope[k] = v
