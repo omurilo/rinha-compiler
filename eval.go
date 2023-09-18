@@ -196,6 +196,35 @@ func Eval(scope Scope, termData Term) Term {
 		second := Eval(scope, tupleValue.Second)
 
 		return fmt.Sprintf("(%v, %v)", first, second)
+	case KindLet:
+		var letValue Let
+
+		err := mapstructure.Decode(termData, &letValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		scope[letValue.Name.Text] = Eval(scope, letValue.Value)
+		return Eval(scope, letValue.Next)
+	case KindVar:
+		var varValue Var
+
+		err := mapstructure.Decode(termData, &varValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		var (
+			value Term
+			ok    bool
+		)
+		if value, ok = scope[varValue.Text]; !ok {
+			panic(fmt.Sprintf("undefined variable %s", varValue.Text))
+		}
 		return value
 	}
 
