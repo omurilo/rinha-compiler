@@ -20,10 +20,15 @@ func main() {
 			log.Fatal(err)
 		}
 	} else {
-		stdin = []byte(os.Args[1])
+		file, err := os.ReadFile(os.Args[1])
+
+		if err != nil {
+			panic(err)
+		}
+		stdin = file
 	}
 	var ast File
-	if err := json.Unmarshal([]byte(stdin), &ast); err != nil {
+	if err := json.Unmarshal(stdin, &ast); err != nil {
 		fmt.Println("Error decoding JSON:", err)
 		return
 	}

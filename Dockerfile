@@ -1,13 +1,15 @@
-FROM golang:1.20.7 as builder
+FROM  golang:1.20-alpine as builder
+ENV CGO_ENABLED=0
+WORKDIR /
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+COPY . .
+RUN go build -o /rinha .
 
-WORKDIR /var/app
-
-RUN apt update && apt upgrade -y
-
-RUN git clone https://github.com/omurilo/rinha-compiler.git /var/app
-
-RUN GOOS=linux go build -o rinha /var/app/main.go
-
-RUN cp rinha /usr/local/bin
-
-ENTRYPOINT [ "/bin/bash" ]
+FROM gcr.io/distroless/base-debian11
+LABEL inspiredBy="Erick Amorim <ericklima.ca@yahoo.com>"
+LABEL maintainer="Murilo Alves <hi@omurilo.dev>"
+COPY --from=builder /rinha /rinha
+COPY --from=builder /examples /examples
+ENTRYPOINT [ "/rinha" ]

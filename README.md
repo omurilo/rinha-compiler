@@ -25,9 +25,7 @@ docker build -t rinha .
 ## Run
 
 ```bash
-docker run -it rinha
-
-$ cat examples/fib-tc.json | rinha
+docker run -it rinha examples/fib-tc.json
 ```
 
 ---
