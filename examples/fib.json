@@ -1,0 +1,223 @@
+{
+  "name": "examples/fib.rinha",
+  "expression": {
+    "kind": "Let",
+    "name": {
+      "text": "fib",
+      "location": {
+        "start": 4,
+        "end": 7,
+        "filename": "examples/fib.rinha"
+      }
+    },
+    "value": {
+      "kind": "Function",
+      "parameters": [
+        {
+          "text": "n",
+          "location": {
+            "start": 13,
+            "end": 14,
+            "filename": "examples/fib.rinha"
+          }
+        }
+      ],
+      "value": {
+        "kind": "If",
+        "condition": {
+          "kind": "Binary",
+          "lhs": {
+            "kind": "Var",
+            "text": "n",
+            "location": {
+              "start": 27,
+              "end": 28,
+              "filename": "examples/fib.rinha"
+            }
+          },
+          "op": "Lt",
+          "rhs": {
+            "kind": "Int",
+            "value": 2,
+            "location": {
+              "start": 31,
+              "end": 32,
+              "filename": "examples/fib.rinha"
+            }
+          },
+          "location": {
+            "start": 27,
+            "end": 32,
+            "filename": "examples/fib.rinha"
+          }
+        },
+        "then": {
+          "kind": "Var",
+          "text": "n",
+          "location": {
+            "start": 40,
+            "end": 41,
+            "filename": "examples/fib.rinha"
+          }
+        },
+        "otherwise": {
+          "kind": "Binary",
+          "lhs": {
+            "kind": "Call",
+            "callee": {
+              "kind": "Var",
+              "text": "fib",
+              "location": {
+                "start": 57,
+                "end": 60,
+                "filename": "examples/fib.rinha"
+              }
+            },
+            "arguments": [
+              {
+                "kind": "Binary",
+                "lhs": {
+                  "kind": "Var",
+                  "text": "n",
+                  "location": {
+                    "start": 61,
+                    "end": 62,
+                    "filename": "examples/fib.rinha"
+                  }
+                },
+                "op": "Sub",
+                "rhs": {
+                  "kind": "Int",
+                  "value": 1,
+                  "location": {
+                    "start": 63,
+                    "end": 64,
+                    "filename": "examples/fib.rinha"
+                  }
+                },
+                "location": {
+                  "start": 61,
+                  "end": 64,
+                  "filename": "examples/fib.rinha"
+                }
+              }
+            ],
+            "location": {
+              "start": 57,
+              "end": 65,
+              "filename": "examples/fib.rinha"
+            }
+          },
+          "op": "Add",
+          "rhs": {
+            "kind": "Call",
+            "callee": {
+              "kind": "Var",
+              "text": "fib",
+              "location": {
+                "start": 68,
+                "end": 71,
+                "filename": "examples/fib.rinha"
+              }
+            },
+            "arguments": [
+              {
+                "kind": "Binary",
+                "lhs": {
+                  "kind": "Var",
+                  "text": "n",
+                  "location": {
+                    "start": 72,
+                    "end": 73,
+                    "filename": "examples/fib.rinha"
+                  }
+                },
+                "op": "Sub",
+                "rhs": {
+                  "kind": "Int",
+                  "value": 2,
+                  "location": {
+                    "start": 75,
+                    "end": 76,
+                    "filename": "examples/fib.rinha"
+                  }
+                },
+                "location": {
+                  "start": 72,
+                  "end": 76,
+                  "filename": "examples/fib.rinha"
+                }
+              }
+            ],
+            "location": {
+              "start": 68,
+              "end": 77,
+              "filename": "examples/fib.rinha"
+            }
+          },
+          "location": {
+            "start": 57,
+            "end": 77,
+            "filename": "examples/fib.rinha"
+          }
+        },
+        "location": {
+          "start": 23,
+          "end": 81,
+          "filename": "examples/fib.rinha"
+        }
+      },
+      "location": {
+        "start": 10,
+        "end": 83,
+        "filename": "examples/fib.rinha"
+      }
+    },
+    "next": {
+      "kind": "Print",
+      "value": {
+        "kind": "Call",
+        "callee": {
+          "kind": "Var",
+          "text": "fib",
+          "location": {
+            "start": 92,
+            "end": 95,
+            "filename": "examples/fib.rinha"
+          }
+        },
+        "arguments": [
+          {
+            "kind": "Int",
+            "value": 10,
+            "location": {
+              "start": 96,
+              "end": 98,
+              "filename": "examples/fib.rinha"
+            }
+          }
+        ],
+        "location": {
+          "start": 92,
+          "end": 99,
+          "filename": "examples/fib.rinha"
+        }
+      },
+      "location": {
+        "start": 86,
+        "end": 100,
+        "filename": "examples/fib.rinha"
+      }
+    },
+    "location": {
+      "start": 0,
+      "end": 100,
+      "filename": "examples/fib.rinha"
+    }
+  },
+  "location": {
+    "start": 0,
+    "end": 100,
+    "filename": "examples/fib.rinha"
+  }
+}
