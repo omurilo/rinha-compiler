@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"math/big"
+	"reflect"
+
+	"github.com/mitchellh/mapstructure"
 )
 
 type Scope map[string]Term
