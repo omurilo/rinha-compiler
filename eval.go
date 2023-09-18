@@ -10,6 +10,16 @@ func Eval(scope Scope, termData Term) Term {
 	kind := termData.(map[string]interface{})["kind"].(string)
 
 	switch TermKind(kind) {
+	case KindStr:
+		var strValue Str
+		err := mapstructure.Decode(termData, &strValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		return strValue.Value
 	}
 
 	return nil
