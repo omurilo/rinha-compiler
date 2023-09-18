@@ -82,6 +82,26 @@ func Eval(scope Scope, termData Term) Term {
 		case Or:
 			lhsBool, rhsBool := toBool(lhs, rhs, "or")
 			return lhsBool || rhsBool
+		case Lt:
+			lhsInt, rhsInt := toInt(lhs, rhs, "lt")
+			// return lhsInt < rhsInt
+			result := lhsInt.Cmp(rhsInt)
+			return result < 0
+		case Gt:
+			lhsInt, rhsInt := toInt(lhs, rhs, "gt")
+			// return lhsInt > rhsInt
+			result := lhsInt.Cmp(rhsInt)
+			return result > 0
+		case Lte:
+			lhsInt, rhsInt := toInt(lhs, rhs, "lte")
+			// return lhsInt <= rhsInt
+			result := lhsInt.Cmp(rhsInt)
+			return result <= 0
+		case Gte:
+			lhsInt, rhsInt := toInt(lhs, rhs, "lte")
+			// return lhsInt >= rhsInt
+			result := lhsInt.Cmp(rhsInt)
+			return result >= 0
 		}
 	case KindBool:
 		var boolValue Print
