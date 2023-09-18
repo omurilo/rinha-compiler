@@ -20,6 +20,17 @@ func Eval(scope Scope, termData Term) Term {
 		}
 
 		return strValue.Value
+	case KindBool:
+		var boolValue Print
+		err := mapstructure.Decode(termData, &boolValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		return boolValue.Value
+		return value
 	}
 
 	return nil
