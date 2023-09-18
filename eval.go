@@ -196,6 +196,46 @@ func Eval(scope Scope, termData Term) Term {
 		second := Eval(scope, tupleValue.Second)
 
 		return fmt.Sprintf("(%v, %v)", first, second)
+	case KindCall:
+		var callValue Call
+
+		err := mapstructure.Decode(termData, &callValue)
+
+		if err != nil {
+			fmt.Println("Error: ", err)
+			return nil
+		}
+
+		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
+
+		var evalArgs []Term
+
+		for _, v := range callValue.Arguments {
+			evalArgs = append(evalArgs, Eval(scope, v))
+		}
+
+		return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(Term)
+	case KindFunction:
+		var functionValue Function
+
+		err := mapstructure.Decode(termData, &functionValue)
+
+		if err != nil {
+			fmt.Println("Error: ", err)
+			return nil
+		}
+
+		return func(args []Term, fScope Scope) Term {
+			isolatedScope := Scope{}
+			for k, v := range fScope {
+				isolatedScope[k] = v
+			}
+			for i, v := range functionValue.Parameters {
+				isolatedScope[v.Text] = args[i]
+			}
+
+			return Eval(isolatedScope, functionValue.Value)
+		}
 	case KindLet:
 		var letValue Let
 
