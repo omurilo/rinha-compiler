@@ -103,6 +103,22 @@ func Eval(scope Scope, termData Term) Term {
 			result := lhsInt.Cmp(rhsInt)
 			return result >= 0
 		}
+	case KindPrint:
+		var printValue Print
+		err := mapstructure.Decode(termData, &printValue)
+
+		if err != nil {
+			fmt.Println("Error:", err)
+			return nil
+		}
+
+		value := Eval(scope, printValue.Value)
+		if reflect.TypeOf(value).Kind().String() == "func" {
+			fmt.Println("<#closure>")
+		} else {
+			fmt.Println(value)
+		}
+		return value
 	case KindBool:
 		var boolValue Print
 		err := mapstructure.Decode(termData, &boolValue)
