@@ -11,9 +11,9 @@ Interpretador em Go feito para [rinha de compiler](https://github.com/aripiprazo
 - [x] If
 - [x] Call
 - [x] Print
-- [x] First
-- [x] Second
-- [x] Tuple
+- [ ] First
+- [ ] Second
+- [ ] Tuple
 
 ## Build
 
