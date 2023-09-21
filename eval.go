@@ -6,34 +6,40 @@ import (
 	"reflect"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/omurilo/rinha-compiler/ast"
+	"github.com/omurilo/rinha-compiler/runtime"
 )
 
-type Scope map[string]Term
+type Scope map[string]ast.Term
 
-func Eval(scope Scope, termData Term) Term {
+func Eval(scope Scope, termData ast.Term) ast.Term {
 	kind := termData.(map[string]interface{})["kind"].(string)
 
-	switch TermKind(kind) {
-	case KindInt:
-		var intValue Int
+	fmt.Println(kind, termData)
+
+	switch ast.TermKind(kind) {
+	case ast.KindInt:
+		var intValue ast.Int
 		decode(termData, &intValue)
 
 		return big.NewInt(intValue.Value)
-	case KindStr:
-		var strValue Str
+	case ast.KindStr:
+		var strValue ast.Str
 		decode(termData, &strValue)
 
 		return strValue.Value
-	case KindBinary:
-		var binaryValue Binary
+	case ast.KindBinary:
+		var binaryValue ast.Binary
 
 		decode(termData, &binaryValue)
 
 		lhs := Eval(scope, binaryValue.LHS)
-		op := BinaryOp(binaryValue.Op)
+		op := ast.BinaryOp(binaryValue.Op)
 		rhs := Eval(scope, binaryValue.RHS)
+
+		fmt.Println(lhs, op, rhs, binaryValue)
 		switch op {
-		case Add:
+		case ast.Add:
 			if lhsInt, ok := lhs.(*big.Int); ok {
 				if rhsInt, ok := rhs.(*big.Int); ok {
 					return new(big.Int).Add(lhsInt, rhsInt)
@@ -48,51 +54,51 @@ func Eval(scope Scope, termData Term) Term {
 				}
 			}
 
-			Error(binaryValue.Location, "invalid add operation")
-		case Sub:
+			runtime.Error(binaryValue.Location, "invalid add operation")
+		case ast.Sub:
 			lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue.Location)
 			return new(big.Int).Sub(lhsInt, rhsInt)
-		case Mul:
+		case ast.Mul:
 			lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue.Location)
 			return new(big.Int).Mul(lhsInt, rhsInt)
-		case Div:
+		case ast.Div:
 			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue.Location)
 			if rhsInt.Cmp(big.NewInt(0)) == 0 {
-				Error(binaryValue.Location, "division by zero")
+				runtime.Error(binaryValue.Location, "division by zero")
 			}
 			return new(big.Int).Div(lhsInt, rhsInt)
-		case Rem:
+		case ast.Rem:
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
 			return new(big.Int).Rem(lhsInt, rhsInt)
-		case Eq:
+		case ast.Eq:
 			return fmt.Sprintf("%v", lhs) == fmt.Sprintf("%v", rhs)
-		case Neq:
+		case ast.Neq:
 			return fmt.Sprintf("%v", lhs) != fmt.Sprintf("%v", rhs)
-		case And:
+		case ast.And:
 			lhsBool, rhsBool := toBool(lhs, rhs)
 			return lhsBool && rhsBool
-		case Or:
+		case ast.Or:
 			lhsBool, rhsBool := toBool(lhs, rhs)
 			return lhsBool || rhsBool
-		case Lt:
+		case ast.Lt:
 			lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue.Location)
 			result := lhsInt.Cmp(rhsInt)
 			return result < 0
-		case Gt:
+		case ast.Gt:
 			lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue.Location)
 			result := lhsInt.Cmp(rhsInt)
 			return result > 0
-		case Lte:
+		case ast.Lte:
 			lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue.Location)
 			result := lhsInt.Cmp(rhsInt)
 			return result <= 0
-		case Gte:
+		case ast.Gte:
 			lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue.Location)
 			result := lhsInt.Cmp(rhsInt)
 			return result >= 0
 		}
-	case KindPrint:
-		var printValue Print
+	case ast.KindPrint:
+		var printValue ast.Print
 		decode(termData, &printValue)
 
 		value := Eval(scope, printValue.Value)
@@ -102,49 +108,50 @@ func Eval(scope Scope, termData Term) Term {
 			fmt.Println(value)
 		}
 		return value
-	case KindBool:
-		var boolValue Print
+	case ast.KindBool:
+		var boolValue ast.Bool
 		decode(termData, &boolValue)
 
 		return boolValue.Value
-	case KindIf:
-		var ifValue If
+	case ast.KindIf:
+		var ifValue ast.If
 		decode(termData, &ifValue)
 
 		value := Eval(scope, ifValue.Condition)
+		fmt.Println("value da condition", value, ifValue.Condition)
 		if bool(value.(bool)) {
 			return Eval(scope, ifValue.Then)
 		} else {
 			return Eval(scope, ifValue.Otherwise)
 		}
-	case KindFirst:
-		var firstValue First
-		var firstValueValue Tuple
+	case ast.KindFirst:
+		var firstValue ast.First
+		var firstValueValue ast.Tuple
 
 		decode(termData, &firstValue)
 		decode(firstValue.Value, &firstValueValue)
 
-		if firstValueValue.Kind != KindTuple {
-			Error(firstValueValue.Location, "Runtime error")
+		if firstValueValue.Kind != ast.KindTuple {
+			runtime.Error(firstValueValue.Location, "Runtime error")
 		}
 		first := firstValueValue.First
 		value := Eval(scope, first)
 		return value
-	case KindSecond:
-		var secondValue Second
-		var secondValueValue Tuple
+	case ast.KindSecond:
+		var secondValue ast.Second
+		var secondValueValue ast.Tuple
 
 		decode(termData, &secondValue)
 		decode(secondValue.Value, &secondValueValue)
 
-		if secondValueValue.Kind != KindTuple {
-			Error(secondValueValue.Location, "Runtime error")
+		if secondValueValue.Kind != ast.KindTuple {
+			runtime.Error(secondValueValue.Location, "Runtime error")
 		}
 		second := secondValueValue.Second
 		value := Eval(scope, second)
 		return value
-	case KindTuple:
-		var tupleValue Tuple
+	case ast.KindTuple:
+		var tupleValue ast.Tuple
 
 		decode(termData, &tupleValue)
 
@@ -152,28 +159,28 @@ func Eval(scope Scope, termData Term) Term {
 		second := Eval(scope, tupleValue.Second)
 
 		return fmt.Sprintf("(%v, %v)", first, second)
-	case KindCall:
-		var callValue Call
+	case ast.KindCall:
+		var callValue ast.Call
 
 		decode(termData, &callValue)
 
 		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
 
-		var evalArgs []Term
+		var evalArgs []ast.Term
 
 		for _, v := range callValue.Arguments {
 			evalArgs = append(evalArgs, Eval(scope, v))
 		}
 
-		return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(Term)
-	case KindFunction:
-		var functionValue Function
+		return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(ast.Term)
+	case ast.KindFunction:
+		var functionValue ast.Function
 
 		decode(termData, &functionValue)
 
-		return func(args []Term, fScope Scope) Term {
+		return func(args []ast.Term, fScope Scope) ast.Term {
 			if len(args) != len(functionValue.Parameters) {
-				Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
+				runtime.Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
 			}
 			isolatedScope := Scope{}
 			for k, v := range fScope {
@@ -185,32 +192,33 @@ func Eval(scope Scope, termData Term) Term {
 
 			return Eval(isolatedScope, functionValue.Value)
 		}
-	case KindLet:
-		var letValue Let
+	case ast.KindLet:
+		var letValue ast.Let
 
 		decode(termData, &letValue)
 
 		scope[letValue.Name.Text] = Eval(scope, letValue.Value)
 		return Eval(scope, letValue.Next)
-	case KindVar:
-		var varValue Var
+	case ast.KindVar:
+		var varValue ast.Var
 
 		decode(termData, &varValue)
-
+		fmt.Println("varValue", varValue)
 		var (
-			value Term
+			value ast.Term
 			ok    bool
 		)
 		if value, ok = scope[varValue.Text]; !ok {
-			Error(varValue.Location, fmt.Sprintf("undefined variable %s", varValue.Text))
+			runtime.Error(varValue.Location, fmt.Sprintf("undefined variable %s", varValue.Text))
 		}
+		fmt.Println("value", value)
 		return value
 	}
 
 	return nil
 }
 
-func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (*big.Int, *big.Int) {
+func toInt(lhs interface{}, rhs interface{}, operation string, loc ast.Location) (*big.Int, *big.Int) {
 	var lhsInt int64
 	var rhsInt int64
 	var okLhs bool = false
@@ -237,7 +245,7 @@ func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (*b
 	}
 
 	if !okLhs || !okRhs {
-		Error(loc, fmt.Sprintf("Invalid %s operation", operation))
+		runtime.Error(loc, fmt.Sprintf("Invalid %s operation", operation))
 	}
 
 	return big.NewInt(lhsInt), big.NewInt(rhsInt)
@@ -290,7 +298,7 @@ func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 	return okLhs, okRhs
 }
 
-func decode(term Term, value Term) Term {
+func decode(term ast.Term, value ast.Term) ast.Term {
 	err := mapstructure.Decode(term, &value)
 
 	if err != nil {
