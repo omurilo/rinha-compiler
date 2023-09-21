@@ -1,0 +1,8 @@
+let fib = fn(n, a, b) => {
+    if (n == 0) {
+        a
+    } else {
+      fn() => { fib(n, b, a + b) }
+    }
+};
+print(fib(10, 0, 1))
