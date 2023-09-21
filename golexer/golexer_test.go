@@ -98,7 +98,7 @@ import (
 // }
 
 func TestPrintHello(t *testing.T) {
-	p := lexer.NewCustomParser()
+	p := lexer.NewCustomParser("test")
 
 	defer golexer.ErrorCatcher(func(err error) {
 		t.Error(err.Error())
@@ -126,7 +126,7 @@ func TestPrintHello(t *testing.T) {
 }
 
 func TestFibonacciTrampoline(t *testing.T) {
-	p := lexer.NewCustomParser()
+	p := lexer.NewCustomParser("test")
 
 	defer golexer.ErrorCatcher(func(err error) {
 		t.Error(err.Error())
@@ -160,8 +160,8 @@ func TestFibonacciTrampoline(t *testing.T) {
 	fmt.Println(b.String())
 }
 
-func TestTokenize(t *testing.T) {
-	p := lexer.NewCustomParser()
+func TestTokenizeFibTrampoline(t *testing.T) {
+	p := lexer.NewCustomParser("test")
 
 	defer golexer.ErrorCatcher(func(err error) {
 		t.Error(err.Error())
@@ -175,6 +175,39 @@ func TestTokenize(t *testing.T) {
     }
   };
   print("fib: " + fib(10, 0, 1))`)
+
+	token := p.Next()
+
+	var b bytes.Buffer
+
+	b.WriteString("===\n")
+
+	for p.TokenID() != 0 {
+
+		b.WriteString(fmt.Sprintf("%v\n", token))
+
+		token = p.Next()
+
+	}
+
+	b.WriteString("===\n")
+
+	fmt.Println(b.String())
+}
+
+func TestTokenizeSymbols(t *testing.T) {
+	p := lexer.NewCustomParser("test")
+
+	defer golexer.ErrorCatcher(func(err error) {
+		t.Error(err.Error())
+	})
+
+	p.Lexer().Start(`if (1 > 2 || 3 < 2 || 4 >= 5 || 5 != 4 || 6 <= 5 && 1 == 1) {
+    print("hello world")
+  } else {
+      print("welcome to hell")
+    }
+`)
 
 	token := p.Next()
 

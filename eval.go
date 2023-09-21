@@ -15,7 +15,7 @@ type Scope map[string]ast.Term
 func Eval(scope Scope, termData ast.Term) ast.Term {
 	kind := termData.(map[string]interface{})["kind"].(string)
 
-	fmt.Println(kind, termData)
+	// fmt.Println(kind, termData)
 
 	switch ast.TermKind(kind) {
 	case ast.KindInt:
@@ -37,7 +37,6 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		op := ast.BinaryOp(binaryValue.Op)
 		rhs := Eval(scope, binaryValue.RHS)
 
-		fmt.Println(lhs, op, rhs, binaryValue)
 		switch op {
 		case ast.Add:
 			if lhsInt, ok := lhs.(*big.Int); ok {
@@ -104,6 +103,12 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		value := Eval(scope, printValue.Value)
 		if reflect.TypeOf(value).Kind().String() == "func" {
 			fmt.Println("<#closure>")
+			// fn := reflect.ValueOf(value)
+			//
+			// var evalArgs []ast.Term
+			//
+			// return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(ast.Term)
+
 		} else {
 			fmt.Println(value)
 		}
@@ -118,7 +123,7 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		decode(termData, &ifValue)
 
 		value := Eval(scope, ifValue.Condition)
-		fmt.Println("value da condition", value, ifValue.Condition)
+		// fmt.Println("value da condition", value, ifValue.Condition)
 		if bool(value.(bool)) {
 			return Eval(scope, ifValue.Then)
 		} else {
@@ -163,12 +168,13 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		var callValue ast.Call
 
 		decode(termData, &callValue)
-
+		// fmt.Println("call function", scope, callValue.Arguments)
 		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
 
 		var evalArgs []ast.Term
 
 		for _, v := range callValue.Arguments {
+			// fmt.Println("call value arguments", scope, v)
 			evalArgs = append(evalArgs, Eval(scope, v))
 		}
 
@@ -190,6 +196,8 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 				isolatedScope[v.Text] = args[i]
 			}
 
+			// fmt.Println("isolatedScope", isolatedScope, "value", functionValue)
+
 			return Eval(isolatedScope, functionValue.Value)
 		}
 	case ast.KindLet:
@@ -203,7 +211,7 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		var varValue ast.Var
 
 		decode(termData, &varValue)
-		fmt.Println("varValue", varValue)
+		// fmt.Println("varValue", varValue.Text, scope)
 		var (
 			value ast.Term
 			ok    bool
@@ -211,7 +219,7 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		if value, ok = scope[varValue.Text]; !ok {
 			runtime.Error(varValue.Location, fmt.Sprintf("undefined variable %s", varValue.Text))
 		}
-		fmt.Println("value", value)
+		// fmt.Println("value", value)
 		return value
 	}
 
@@ -302,7 +310,7 @@ func decode(term ast.Term, value ast.Term) ast.Term {
 	err := mapstructure.Decode(term, &value)
 
 	if err != nil {
-		fmt.Println("Error:", err)
+		// fmt.Println("Error:", err)
 		return nil
 	}
 
