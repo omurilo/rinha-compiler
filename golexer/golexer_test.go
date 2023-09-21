@@ -160,6 +160,41 @@ func TestFibonacciTrampoline(t *testing.T) {
 	fmt.Println(b.String())
 }
 
+func TestTokenizeFib(t *testing.T) {
+	p := lexer.NewCustomParser("test")
+
+	defer golexer.ErrorCatcher(func(err error) {
+		t.Error(err.Error())
+	})
+
+	p.Lexer().Start(`let fib = fn(n) => {
+    if (n < 2) {
+      n
+    } else {
+      fib(n - 1) + fib(n - 2)
+    }
+  }`)
+
+	token := p.Next()
+
+	var b bytes.Buffer
+
+	b.WriteString("===\n")
+
+	for p.TokenID() != 0 {
+
+		b.WriteString(fmt.Sprintf("%v\n", token))
+
+		token = p.Next()
+
+	}
+
+	b.WriteString("===\n")
+
+	fmt.Println(b.String())
+
+}
+
 func TestTokenizeFibTrampoline(t *testing.T) {
 	p := lexer.NewCustomParser("test")
 

@@ -98,9 +98,6 @@ type CustomParser struct {
 func NewCustomParser(filename string) *CustomParser {
 	l := golexer.NewLexer()
 
-	l.AddMatcher(golexer.NewNumeralMatcher(Token_Numeral))
-	l.AddMatcher(golexer.NewStringMatcher(Token_String))
-
 	l.AddIgnoreMatcher(golexer.NewWhiteSpaceMatcher(Token_WhiteSpace))
 	l.AddIgnoreMatcher(golexer.NewLineEndMatcher(Token_LineEnd))
 	l.AddIgnoreMatcher(golexer.NewUnixStyleCommentMatcher(Token_UnixStyleComment))
@@ -138,6 +135,9 @@ func NewCustomParser(filename string) *CustomParser {
 	l.AddMatcher(golexer.NewSignMatcher(Token_RParen, ")"))
 	l.AddMatcher(golexer.NewSignMatcher(Token_LBrace, "{"))
 	l.AddMatcher(golexer.NewSignMatcher(Token_RBrace, "}"))
+
+	l.AddMatcher(golexer.NewNumeralMatcher(Token_Numeral))
+	l.AddMatcher(golexer.NewStringMatcher(Token_String))
 
 	l.AddMatcher(golexer.NewIdentifierMatcher(Token_Identifier))
 
