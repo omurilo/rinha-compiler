@@ -41,7 +41,7 @@ func Main(program string, filename string) string {
 	//   runtime.Error(current_token.Location, "unexpected error occurred at parsing tree to json")
 	// }
 
-	fmt.Println(string(treeJson))
+	// fmt.Println(string(treeJson))
 	return string(treeJson)
 }
 

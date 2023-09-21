@@ -15,7 +15,6 @@ Interpretador em Go feito para [rinha de compiler](https://github.com/aripiprazo
 - [x] Second
 - [x] Tuple
 
-
 ## Build
 
 ```bash
@@ -25,8 +24,9 @@ docker build -t rinha .
 ## Run
 
 ```bash
-docker run -it rinha examples/fib-tc.json
+docker run -it rinha examples/fib-tc.rinha
 ```
 
 ---
+
 ###### Readme copied from [ghhernandes](https://github.com/ghhernandes/rinha-compiler-go)
