@@ -8,6 +8,8 @@ import (
 	"os"
 )
 
+const DEFAULT_FILE_PATH = "/var/rinha/source.rinha.json"
+
 func main() {
 	var stdin []byte
 	stat, _ := os.Stdin.Stat()
@@ -20,7 +22,15 @@ func main() {
 			log.Fatal(err)
 		}
 	} else {
-		file, err := os.ReadFile(os.Args[1])
+		args := os.Args
+		var file []byte
+		var err error
+
+		if len(args) < 2 {
+			file, err = os.ReadFile(DEFAULT_FILE_PATH)
+		} else {
+			file, err = os.ReadFile(os.Args[1])
+		}
 
 		if err != nil {
 			panic(err)
