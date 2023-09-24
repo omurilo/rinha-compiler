@@ -28,7 +28,7 @@ make build
 make hello
 make showcase
 make bench
-make test file=examples/sum.json
+make run
 ```
 
 ---
