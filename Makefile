@@ -16,9 +16,9 @@ hello: # Run rinha program to hello example
 showcase: # Run rinha program to showcase example
 	@docker run -it rinha examples/showcase.json
 
-.PHONY: test
-test: # Run rinha program to file input. Eg: make test file=/var/files/source.rinha.json
-	@docker run -it rinha ${file}
+.PHONY: run
+run: # Run rinha program to file /var/rinha/source.rinha.json
+	@docker run -v ./source.rinha.json:/var/rinha/source.rinha.json --cpus=2 --memory=2gb rinha
 
 .PHONY: bench
 bench: # Run time of rinha program to showcase example
