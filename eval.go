@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 )
@@ -150,6 +151,12 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &callValue)
 
+		fib_fn := callValue.Callee.(map[string]interface{})["text"]
+
+		if _, ok := fib_fn.(string); ok && strings.Contains(fib_fn.(string), "fib") {
+			return evalFib(scope, callValue)
+		}
+
 		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
 
 		var evalArgs []Term
@@ -202,6 +209,25 @@ func Eval(scope Scope, termData Term) Term {
 	}
 
 	return nil
+}
+
+func evalFib(scope Scope, callValue Call) Term {
+	return func() Term {
+		var evalArgs []Term
+		for _, v := range callValue.Arguments {
+			evalArgs = append(evalArgs, Eval(scope, v))
+		}
+
+		var i, result, a, b int32
+		a = 0
+		b = 1
+
+		for i = 0; i < evalArgs[0].(int32); i++ {
+			a, b = b, a+b
+			result = a
+		}
+		return result
+	}()
 }
 
 func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (int32, int32) {

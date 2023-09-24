@@ -60,5 +60,13 @@ let fib_tc = fn (n, a, b) => {
     fib_tc(n - 1, b, a + b)
   }
 };
-let _ = print("fib_tc(100): " + fib_tc(46, 0, 1));
+let _ = print("fib_tc(46): " + fib_tc(46, 0, 1));
+let fibonacci = fn (n) => {
+  if (n < 2) {
+    n
+  } else {
+    fibonacci(n-1) + fibonacci(n-2)
+  }
+};
+let _ = print("fib(46):" + fib(46));
 print("Done showcase")
