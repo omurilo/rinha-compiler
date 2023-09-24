@@ -19,14 +19,18 @@ Interpretador em Go feito para [rinha de compiler](https://github.com/aripiprazo
 ## Build
 
 ```bash
-docker build -t rinha .
+make build
 ```
 
 ## Run
 
 ```bash
-docker run -it rinha examples/fib-tc.json
+make hello
+make showcase
+make bench
+make test file=examples/sum.json
 ```
 
 ---
 ###### Readme copied from [ghhernandes](https://github.com/ghhernandes/rinha-compiler-go)
+###### Showcase example copied from [leandronsp](https://github.com/leandronsp/patropi)
