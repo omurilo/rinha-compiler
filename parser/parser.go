@@ -48,7 +48,7 @@ func Main(program string, filename string) string {
 func parser() map[string]interface{} {
 	switch current_token.Type {
 	case ":PRINT":
-		return parse_print()
+		return maybe_binary_op(parse_print())
 	case ":STRING":
 		return maybe_binary_op(parse_string())
 	case ":NUMBER":

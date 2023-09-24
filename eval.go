@@ -103,12 +103,6 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		value := Eval(scope, printValue.Value)
 		if reflect.TypeOf(value).Kind().String() == "func" {
 			fmt.Println("<#closure>")
-			// fn := reflect.ValueOf(value)
-			//
-			// var evalArgs []ast.Term
-			//
-			// return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(ast.Term)
-
 		} else {
 			fmt.Println(value)
 		}
@@ -124,7 +118,22 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 
 		value := Eval(scope, ifValue.Condition)
 		// fmt.Println("value da condition", value, ifValue.Condition)
-		if bool(value.(bool)) {
+		if reflect.TypeOf(value).Kind() != reflect.Bool {
+			switch value := value.(type) {
+			case *big.Int:
+				if new(big.Int).Set(value).Cmp(big.NewInt(0)) != 0 {
+					return Eval(scope, ifValue.Then)
+				} else {
+					return Eval(scope, ifValue.Otherwise)
+				}
+			case string:
+				if value != "" {
+					return Eval(scope, ifValue.Then)
+				} else {
+					return Eval(scope, ifValue.Otherwise)
+				}
+			}
+		} else if bool(value.(bool)) {
 			return Eval(scope, ifValue.Then)
 		} else {
 			return Eval(scope, ifValue.Otherwise)
