@@ -1,1 +1,5 @@
-print(second((1, 2)))
+let _ = print(second((1, 2)));
+let value = (1, 2);
+let _ = print(second(value));
+let value2 = ("first", print("hello"));
+print(second(value2))

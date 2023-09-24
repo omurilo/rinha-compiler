@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -118,6 +119,20 @@ func Eval(scope Scope, termData Term) Term {
 		decode(termData, &firstValue)
 		decode(firstValue.Value, &firstValueValue)
 
+		if firstValueValue.Kind == KindVar {
+			var val Var
+			decode(firstValue.Value, &val)
+			if input, ok := scope[val.Text].(string); ok {
+				tuple, err := toTuple(input)
+
+				if err != nil {
+					Error(firstValueValue.Location, "Runtime error")
+				}
+
+				return tuple.First.(First).Value
+			}
+		}
+
 		if firstValueValue.Kind != KindTuple {
 			Error(firstValueValue.Location, "Runtime error")
 		}
@@ -130,6 +145,20 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &secondValue)
 		decode(secondValue.Value, &secondValueValue)
+
+		if secondValueValue.Kind == KindVar {
+			var val Var
+			decode(secondValue.Value, &val)
+			if input, ok := scope[val.Text].(string); ok {
+				tuple, err := toTuple(input)
+
+				if err != nil {
+					Error(secondValueValue.Location, "Runtime error")
+				}
+
+				return tuple.Second.(Second).Value
+			}
+		}
 
 		if secondValueValue.Kind != KindTuple {
 			Error(secondValueValue.Location, "Runtime error")
@@ -310,6 +339,24 @@ func toString(value interface{}) string {
 	}
 
 	return value.(string)
+}
+
+func toTuple(input string) (*Tuple, error) {
+	regex := regexp.MustCompile(`^\((.*), (.*)\)$`)
+	match := regex.FindStringSubmatch(input)
+
+	if len(match) != 3 {
+		return nil, fmt.Errorf("invalid tuple format: %s", input)
+	}
+
+	first := match[1]
+	second := match[2]
+
+	return &Tuple{
+		Kind:   "Tuple",
+		First:  First{Value: first, Kind: "First"},
+		Second: Second{Value: second, Kind: "Second"},
+	}, nil
 }
 
 func decode(term Term, value Term) Term {
