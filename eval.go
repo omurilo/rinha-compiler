@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"math/big"
 	"reflect"
+	"strconv"
 
 	"github.com/mitchellh/mapstructure"
 )
@@ -18,7 +18,7 @@ func Eval(scope Scope, termData Term) Term {
 		var intValue Int
 		decode(termData, &intValue)
 
-		return big.NewInt(intValue.Value)
+		return intValue.Value
 	case KindStr:
 		var strValue Str
 		decode(termData, &strValue)
@@ -34,36 +34,33 @@ func Eval(scope Scope, termData Term) Term {
 		rhs := Eval(scope, binaryValue.RHS)
 		switch op {
 		case Add:
-			if lhsInt, ok := lhs.(*big.Int); ok {
-				if rhsInt, ok := rhs.(*big.Int); ok {
-					return new(big.Int).Add(lhsInt, rhsInt)
-				} else if rhsStr, ok := rhs.(string); ok {
-					return fmt.Sprintf("%d%s", lhsInt, rhsStr)
-				}
-			} else if lhsStr, ok := lhs.(string); ok {
-				if rhsInt, ok := rhs.(*big.Int); ok {
-					return fmt.Sprintf("%s%d", lhsStr, rhsInt)
-				} else if rhsStr, ok := rhs.(string); ok {
-					return fmt.Sprintf("%s%s", lhsStr, rhsStr)
-				}
+			lhsType := reflect.TypeOf(lhs).Kind()
+			rhsType := reflect.TypeOf(rhs).Kind()
+
+			if lhsType == reflect.String || rhsType == reflect.String {
+				return toString(lhs) + toString(rhs)
+			}
+
+			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
+				return lhs.(int32) + rhs.(int32)
 			}
 
 			Error(binaryValue.Location, "invalid add operation")
 		case Sub:
 			lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue.Location)
-			return new(big.Int).Sub(lhsInt, rhsInt)
+			return lhsInt - rhsInt
 		case Mul:
 			lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue.Location)
-			return new(big.Int).Mul(lhsInt, rhsInt)
+			return lhsInt * rhsInt
 		case Div:
 			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue.Location)
-			if rhsInt.Cmp(big.NewInt(0)) == 0 {
+			if rhsInt == 0 {
 				Error(binaryValue.Location, "division by zero")
 			}
-			return new(big.Int).Div(lhsInt, rhsInt)
+			return float64(lhsInt) / float64(rhsInt)
 		case Rem:
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
-			return new(big.Int).Rem(lhsInt, rhsInt)
+			return lhsInt % rhsInt
 		case Eq:
 			return fmt.Sprintf("%v", lhs) == fmt.Sprintf("%v", rhs)
 		case Neq:
@@ -76,20 +73,16 @@ func Eval(scope Scope, termData Term) Term {
 			return lhsBool || rhsBool
 		case Lt:
 			lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result < 0
+			return lhsInt < rhsInt
 		case Gt:
 			lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result > 0
+			return lhsInt > rhsInt
 		case Lte:
 			lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result <= 0
+			return lhsInt <= rhsInt
 		case Gte:
 			lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result >= 0
+			return lhsInt >= rhsInt
 		}
 	case KindPrint:
 		var printValue Print
@@ -204,35 +197,26 @@ func Eval(scope Scope, termData Term) Term {
 		if value, ok = scope[varValue.Text]; !ok {
 			Error(varValue.Location, fmt.Sprintf("undefined variable %s", varValue.Text))
 		}
+
 		return value
 	}
 
 	return nil
 }
 
-func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (*big.Int, *big.Int) {
-	var lhsInt int64
-	var rhsInt int64
+func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (int32, int32) {
+	var lhsInt int32
+	var rhsInt int32
 	var okLhs bool = false
 	var okRhs bool = false
 
-	if _, ok := lhs.(int64); ok {
-		lhsInt = lhs.(int64)
+	if _, ok := lhs.(int32); ok {
+		lhsInt = lhs.(int32)
 		okLhs = true
 	}
 
-	if _, ok := rhs.(int64); ok {
-		rhsInt = rhs.(int64)
-		okRhs = true
-	}
-
-	if _, ok := lhs.(*big.Int); ok {
-		lhsInt = lhs.(*big.Int).Int64()
-		okLhs = true
-	}
-
-	if _, ok := rhs.(*big.Int); ok {
-		rhsInt = rhs.(*big.Int).Int64()
+	if _, ok := rhs.(int32); ok {
+		rhsInt = rhs.(int32)
 		okRhs = true
 	}
 
@@ -240,20 +224,20 @@ func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (*b
 		Error(loc, fmt.Sprintf("Invalid %s operation", operation))
 	}
 
-	return big.NewInt(lhsInt), big.NewInt(rhsInt)
+	return lhsInt, rhsInt
 }
 
 func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 	var okLhs bool = false
 	var okRhs bool = false
 
-	if _, ok := lhs.(int64); ok {
+	if _, ok := lhs.(int32); ok {
 		if lhs != 0 {
 			okLhs = true
 		}
 	}
 
-	if _, ok := rhs.(int64); ok {
+	if _, ok := rhs.(int32); ok {
 		if rhs != 0 {
 			okRhs = true
 		}
@@ -288,6 +272,18 @@ func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 	}
 
 	return okLhs, okRhs
+}
+
+func toString(value interface{}) string {
+	if reflect.TypeOf(value).Kind() == reflect.Int32 {
+		return strconv.Itoa(int(value.(int32)))
+	} else if reflect.TypeOf(value).Kind() == reflect.Float64 {
+		return strconv.FormatFloat(value.(float64), 'g', -1, 64)
+	} else if reflect.TypeOf(value).Kind().String() == "func" {
+		return "#<closure>"
+	}
+
+	return value.(string)
 }
 
 func decode(term Term, value Term) Term {
