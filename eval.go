@@ -59,7 +59,7 @@ func Eval(scope Scope, termData Term) Term {
 			if rhsInt == 0 {
 				Error(binaryValue.Location, "division by zero")
 			}
-			return float64(lhsInt) / float64(rhsInt)
+			return lhsInt / rhsInt
 		case Rem:
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
 			return lhsInt % rhsInt
