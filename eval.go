@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/mitchellh/mapstructure"
 )
 
 type Scope map[string]Term
+
+var cache_scope map[string]Term = make(map[string]Term, 0)
 
 func Eval(scope Scope, termData Term) Term {
 	kind := termData.(map[string]interface{})["kind"].(string)
@@ -180,21 +182,26 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &callValue)
 
-		fib_fn := callValue.Callee.(map[string]interface{})["text"]
-
-		if _, ok := fib_fn.(string); ok && strings.Contains(fib_fn.(string), "fib") {
-			return evalFib(scope, callValue)
-		}
-
-		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
-
 		var evalArgs []Term
 
 		for _, v := range callValue.Arguments {
 			evalArgs = append(evalArgs, Eval(scope, v))
 		}
 
-		return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(Term)
+		args_str := (*argsToString(evalArgs)).String()
+		fn_name := callValue.Callee.(map[string]interface{})["text"]
+
+		if cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)] != nil {
+			return cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)]
+		}
+
+		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
+
+		result := fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(Term)
+
+		cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
+
+		return result
 	case KindFunction:
 		var functionValue Function
 
@@ -238,25 +245,6 @@ func Eval(scope Scope, termData Term) Term {
 	}
 
 	return nil
-}
-
-func evalFib(scope Scope, callValue Call) Term {
-	return func() Term {
-		var evalArgs []Term
-		for _, v := range callValue.Arguments {
-			evalArgs = append(evalArgs, Eval(scope, v))
-		}
-
-		var i, result, a, b int32
-		a = 0
-		b = 1
-
-		for i = 0; i < evalArgs[0].(int32); i++ {
-			a, b = b, a+b
-			result = a
-		}
-		return result
-	}()
 }
 
 func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (int32, int32) {
@@ -368,4 +356,18 @@ func decode(term Term, value Term) Term {
 	}
 
 	return value
+}
+
+func argsToString(args []Term) *bytes.Buffer {
+	var buffer bytes.Buffer
+	for i := 0; i < len(args); i++ {
+		argType := reflect.TypeOf(args[i]).Kind()
+		if argType == reflect.Int32 {
+			buffer.WriteString(strconv.Itoa(int(args[i].(int32))))
+		} else {
+			buffer.WriteString(args[i].(string))
+		}
+	}
+
+	return &buffer
 }
