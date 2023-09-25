@@ -335,7 +335,7 @@ func toString(value interface{}) string {
 	} else if reflect.TypeOf(value).Kind() == reflect.Float64 {
 		return strconv.FormatFloat(value.(float64), 'g', -1, 64)
 	} else if reflect.TypeOf(value).Kind().String() == "func" {
-		return "#<closure>"
+		return "<#closure>"
 	}
 
 	return value.(string)
