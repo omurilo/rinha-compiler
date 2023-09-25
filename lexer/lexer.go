@@ -2,6 +2,8 @@ package lexer
 
 import (
 	"fmt"
+	"reflect"
+	"regexp"
 
 	"github.com/davyxu/golexer"
 	"github.com/omurilo/rinha-compiler/ast"
@@ -59,6 +61,7 @@ const (
 	Token_LineEnd
 	Token_UnixStyleComment
 	Token_Identifier
+	Token_Tuple
 	Token_Semicolon
 	Token_If
 	Token_Else
@@ -131,6 +134,8 @@ func NewCustomParser(filename string) *CustomParser {
 	l.AddMatcher(golexer.NewSignMatcher(Token_Or, "||"))
 	l.AddMatcher(golexer.NewSignMatcher(Token_And, "&&"))
 
+	l.AddMatcher(NewTupleMatcher(Token_Tuple))
+
 	l.AddMatcher(golexer.NewSignMatcher(Token_LParen, "("))
 	l.AddMatcher(golexer.NewSignMatcher(Token_RParen, ")"))
 	l.AddMatcher(golexer.NewSignMatcher(Token_LBrace, "{"))
@@ -158,21 +163,7 @@ func Initialize(program string, filename string) *CustomParser {
 func (p *CustomParser) Next() Token {
 	var token Token
 	p.NextToken()
-
-	if p.TokenID() != 0 {
-		switch p.MatcherName() {
-		case "NumeralMatcher":
-			token = Token{Type: ":NUMBER", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
-		case "StringMatcher":
-			token = Token{Type: ":STRING", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
-		case "SignMatcher":
-			token = Token{Type: SYMBOLS[p.TokenValue()], Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
-		case "KeywordMatcher":
-			token = Token{Type: KEYWORDS[p.TokenValue()], Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
-		case "IdentifierMatcher":
-			token = Token{Type: ":IDENTIFIER", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
-		}
-	}
+	token = p.parseTokenMatcher()
 
 	return token
 }
@@ -186,8 +177,73 @@ func (p *CustomParser) Tokenize() {
 	}
 }
 
+func (p *CustomParser) parseTokenMatcher() Token {
+	var token Token
+
+	if p.TokenID() != 0 {
+		switch p.MatcherName() {
+		case "NumeralMatcher":
+			token = Token{Type: ":NUMBER", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+		case "StringMatcher":
+			token = Token{Type: ":STRING", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+		case "SignMatcher":
+			token = Token{Type: SYMBOLS[p.TokenValue()], Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+		case "KeywordMatcher":
+			token = Token{Type: KEYWORDS[p.TokenValue()], Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+		case "IdentifierMatcher":
+			token = Token{Type: ":IDENTIFIER", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+		case "TupleMatcher":
+			token = Token{Type: ":TUPLE", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+		}
+	}
+
+	return token
+}
+
 func parse_location(position golexer.TokenPos) ast.Location {
 	return ast.Location{Filename: position.SourceName, Start: uint32(position.Line), End: uint32(position.Col)}
+}
+
+type baseMatcher struct {
+	id int
+}
+
+type TupleMatcher struct {
+	baseMatcher
+	word []rune
+}
+
+func (b *baseMatcher) ID() int {
+	return b.id
+}
+
+func (tpm *TupleMatcher) String() string {
+	return fmt.Sprintf("%s('%s')", reflect.TypeOf(tpm).Elem().Name(), string(tpm.word))
+}
+
+func (tpm *TupleMatcher) Match(tz *golexer.Tokenizer) (golexer.Token, error) {
+	re := regexp.MustCompile(`\(([^(),]+),([^(),]+)\)`)
+	src_str := tz.Src()[tz.Index():]
+	match := re.FindString(string(src_str))
+
+	if (tz.Count() - tz.Index()) < len(match) {
+		return golexer.EmptyToken, nil
+	}
+
+	if len(src_str) > 1 && string(src_str[:2]) != "((" {
+		tz.ConsumeMulti(len(match))
+		return golexer.NewToken(tpm, tz, match, ""), nil
+	}
+
+	return golexer.EmptyToken, nil
+}
+
+func NewTupleMatcher(id int) golexer.TokenMatcher {
+	self := &TupleMatcher{
+		baseMatcher: baseMatcher{id},
+	}
+
+	return self
 }
 
 // func parse_trash(token string) bool {

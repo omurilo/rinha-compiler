@@ -3,9 +3,11 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/omurilo/rinha-compiler/ast"
 	"github.com/omurilo/rinha-compiler/lexer"
 	"github.com/omurilo/rinha-compiler/runtime"
 )
@@ -35,11 +37,11 @@ func Main(program string, filename string) string {
 
 	advance()
 	tree = map[string]interface{}{"name": filename, "expression": parser()}
-	treeJson, _ := json.Marshal(tree)
+	treeJson, err := json.Marshal(tree)
 
-	// err != nil {
-	//   runtime.Error(current_token.Location, "unexpected error occurred at parsing tree to json")
-	// }
+	if err != nil {
+		runtime.Error(current_token.Location, "unexpected error occurred at parsing tree to json")
+	}
 
 	// fmt.Println(string(treeJson))
 	return string(treeJson)
@@ -62,9 +64,11 @@ func parser() map[string]interface{} {
 	case ":IF":
 		return parse_if()
 	case ":TRUE":
-		return parse_bool()
+		return maybe_binary_op(parse_bool())
 	case ":FALSE":
-		return parse_bool()
+		return maybe_binary_op(parse_bool())
+	case ":TUPLE":
+		return parse_tuple()
 	default:
 		// consume(current_token.Type)
 		return nil
@@ -170,6 +174,30 @@ func parse_if() map[string]interface{} {
 
 		consume(":RBRACE")
 	}
+
+	return node
+}
+
+func parse_tuple() map[string]interface{} {
+	node := map[string]interface{}{"kind": "Tuple", "location": current_token.Location}
+	node["first"] = map[string]interface{}{}
+	node["second"] = map[string]interface{}{}
+
+	tuplePattern := `\(([^,]+),\s*([^)]+)\)`
+	regex := regexp.MustCompile(tuplePattern)
+	matches := regex.FindStringSubmatch(current_token.Value)
+
+	firstValue := matches[1]
+	secondValue := matches[2]
+
+	firstLocation := ast.Location{Start: current_token.Location.Start, End: current_token.Location.End - uint32(len(secondValue))}
+
+	firstInt, _ := strconv.Atoi(firstValue)
+
+	node["first"] = map[string]interface{}{"kind": "Int", "location": firstLocation, "value": firstInt}
+	node["second"] = map[string]interface{}{"kind": "Bool", "location": current_token.Location, "value": secondValue == "true"}
+
+	consume(":TUPLE")
 
 	return node
 }

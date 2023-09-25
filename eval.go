@@ -22,6 +22,8 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 		var intValue ast.Int
 		decode(termData, &intValue)
 
+		fmt.Println(intValue, termData)
+
 		return big.NewInt(intValue.Value)
 	case ast.KindStr:
 		var strValue ast.Str
@@ -171,6 +173,8 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 
 		first := Eval(scope, tupleValue.First)
 		second := Eval(scope, tupleValue.Second)
+
+		fmt.Println("tuple", first, second, tupleValue.First)
 
 		return fmt.Sprintf("(%v, %v)", first, second)
 	case ast.KindCall:
