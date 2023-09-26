@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -48,6 +50,12 @@ func Eval(scope Scope, termData Term) Term {
 			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
 				return lhs.(int32) + rhs.(int32)
 			}
+
+			if lhsType == reflect.Int && rhsType == reflect.Int {
+				return fmt.Sprintf("%s", lhs.(int)+rhs.(int))
+			}
+
+			fmt.Println(lhsType, rhsType)
 
 			Error(binaryValue.Location, "invalid add operation")
 		case Sub:
@@ -191,13 +199,22 @@ func Eval(scope Scope, termData Term) Term {
 		args_str := (*argsToString(evalArgs)).String()
 		fn_name := callValue.Callee.(map[string]interface{})["text"]
 
+		if _, ok := fn_name.(string); !ok {
+			fn_name = "anonymous"
+		}
+
+		if ok := args_str == ""; ok {
+			big, _ := rand.Int(rand.Reader, big.NewInt(1e6))
+			args_str = big.String() + fmt.Sprintf("%d", len(evalArgs))
+		}
+
 		if cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)] != nil {
 			return cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)]
 		}
 
 		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
 
-		result := fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(Term)
+		result := fn.Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
 
 		cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
 
@@ -207,14 +224,15 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &functionValue)
 
-		return func(args []Term, fScope Scope) Term {
+		return func(args []Term) Term {
 			if len(args) != len(functionValue.Parameters) {
 				Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
 			}
 			isolatedScope := Scope{}
-			for k, v := range fScope {
+			for k, v := range scope {
 				isolatedScope[k] = v
 			}
+
 			for i, v := range functionValue.Parameters {
 				isolatedScope[v.Text] = args[i]
 			}
@@ -320,8 +338,6 @@ func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 func toString(value interface{}) string {
 	if reflect.TypeOf(value).Kind() == reflect.Int32 {
 		return strconv.Itoa(int(value.(int32)))
-	} else if reflect.TypeOf(value).Kind() == reflect.Float64 {
-		return strconv.FormatFloat(value.(float64), 'g', -1, 64)
 	} else if reflect.TypeOf(value).Kind().String() == "func" {
 		return "<#closure>"
 	}
@@ -361,12 +377,8 @@ func decode(term Term, value Term) Term {
 func argsToString(args []Term) *bytes.Buffer {
 	var buffer bytes.Buffer
 	for i := 0; i < len(args); i++ {
-		argType := reflect.TypeOf(args[i]).Kind()
-		if argType == reflect.Int32 {
-			buffer.WriteString(strconv.Itoa(int(args[i].(int32))))
-		} else {
-			buffer.WriteString(args[i].(string))
-		}
+		value := toString(args[i])
+		buffer.WriteString(value)
 	}
 
 	return &buffer

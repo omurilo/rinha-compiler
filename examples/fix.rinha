@@ -1,0 +1,4 @@
+let fix = fn (x) => { fn() => { x } };
+let _ = print(fix(10)());
+let _ = print(fix(20)());
+print(fix(fix)()(10)())
