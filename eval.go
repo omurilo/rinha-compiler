@@ -52,7 +52,7 @@ func Eval(scope Scope, termData Term) Term {
 			}
 
 			if lhsType == reflect.Int && rhsType == reflect.Int {
-				return fmt.Sprintf("%s", lhs.(int)+rhs.(int))
+				return lhs.(int32) + rhs.(int32)
 			}
 
 			fmt.Println(lhsType, rhsType)
