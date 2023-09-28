@@ -43,7 +43,10 @@ func Eval(scope Scope, termData Term) Term {
 			rhsType := reflect.TypeOf(rhs).Kind()
 
 			if lhsType == reflect.String || rhsType == reflect.String {
-				return toString(lhs) + toString(rhs)
+				var str bytes.Buffer
+				str.WriteString(toString(lhs))
+				str.WriteString(toString(rhs))
+				return str.String()
 			}
 
 			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
@@ -53,8 +56,6 @@ func Eval(scope Scope, termData Term) Term {
 			if lhsType == reflect.Int && rhsType == reflect.Int {
 				return lhs.(int32) + rhs.(int32)
 			}
-
-			fmt.Println(lhsType, rhsType)
 
 			Error(binaryValue.Location, "invalid add operation")
 		case Sub:
@@ -165,7 +166,8 @@ func Eval(scope Scope, termData Term) Term {
 		var evalArgs []Term
 
 		for _, v := range callValue.Arguments {
-			evalArgs = append(evalArgs, Eval(scope, v))
+			arg := Eval(scope, v)
+			evalArgs = append(evalArgs, arg)
 		}
 
 		args_str := (*argsToString(evalArgs)).String()
@@ -184,9 +186,13 @@ func Eval(scope Scope, termData Term) Term {
 			return cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)]
 		}
 
-		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
+		fn := Eval(scope, callValue.Callee)
 
-		result := fn.Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
+		if reflect.TypeOf(fn).Kind().String() != "func" {
+			return fn
+		}
+
+		result := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
 
 		cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
 
@@ -200,6 +206,7 @@ func Eval(scope Scope, termData Term) Term {
 			if len(args) != len(functionValue.Parameters) {
 				Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
 			}
+
 			isolatedScope := Scope{}
 			for k, v := range scope {
 				isolatedScope[k] = v
@@ -207,6 +214,7 @@ func Eval(scope Scope, termData Term) Term {
 
 			for i, v := range functionValue.Parameters {
 				isolatedScope[v.Text] = args[i]
+				isolatedScope[fmt.Sprintf("%s#%v", v.Text, i+1)] = args[i]
 			}
 
 			return Eval(isolatedScope, functionValue.Value)
@@ -335,7 +343,19 @@ func decode(term Term, value Term) Term {
 func argsToString(args []Term) *bytes.Buffer {
 	var buffer bytes.Buffer
 	for i := 0; i < len(args); i++ {
-		value := toString(args[i])
+		var value string
+		if reflect.TypeOf(args[i]).Kind() == reflect.Int32 {
+			value = strconv.Itoa(int(args[i].(int32)))
+		} else if reflect.TypeOf(args[i]).Kind().String() == "func" {
+			value = ""
+		} else if reflect.TypeOf(args[i]) == reflect.TypeOf(Tuple{}) {
+			value = fmt.Sprintf("(%v, %v)", toString(args[i].(Tuple).First), toString(args[i].(Tuple).Second))
+		} else if reflect.TypeOf(args[i]).Kind() == reflect.Bool {
+			value = strconv.FormatBool(args[i].(bool))
+		} else {
+			value = args[i].(string)
+		}
+
 		buffer.WriteString(value)
 	}
 

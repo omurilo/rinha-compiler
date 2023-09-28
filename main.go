@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 )
 
 const DEFAULT_FILE_PATH = "/var/rinha/source.rinha.json"
@@ -44,5 +45,6 @@ func main() {
 	}
 	SCOPE_DEFAULT_SIZE := 8
 	scope := make(Scope, SCOPE_DEFAULT_SIZE)
+	runtime.GOMAXPROCS(10000)
 	Eval(scope, ast.Expression)
 }
