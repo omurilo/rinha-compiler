@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
-	"regexp"
 	"strconv"
 
 	"github.com/mitchellh/mapstructure"
@@ -103,6 +102,8 @@ func Eval(scope Scope, termData Term) Term {
 		value := Eval(scope, printValue.Value)
 		if reflect.TypeOf(value).Kind().String() == "func" {
 			fmt.Println("<#closure>")
+		} else if _, ok := value.(Tuple); ok {
+			fmt.Printf("(%v, %v)\n", toString(value.(Tuple).First), toString(value.(Tuple).Second))
 		} else {
 			fmt.Println(value)
 		}
@@ -124,58 +125,28 @@ func Eval(scope Scope, termData Term) Term {
 		}
 	case KindFirst:
 		var firstValue First
-		var firstValueValue Tuple
 
 		decode(termData, &firstValue)
-		decode(firstValue.Value, &firstValueValue)
 
-		if firstValueValue.Kind == KindVar {
-			var val Var
-			decode(firstValue.Value, &val)
-			if input, ok := scope[val.Text].(string); ok {
-				tuple, err := toTuple(input)
+		value := Eval(scope, firstValue.Value)
 
-				if err != nil {
-					Error(firstValueValue.Location, "Runtime error")
-				}
-
-				return tuple.First.(First).Value
-			}
+		if tuple, ok := value.(Tuple); ok {
+			return tuple.First
 		}
 
-		if firstValueValue.Kind != KindTuple {
-			Error(firstValueValue.Location, "Runtime error")
-		}
-		first := firstValueValue.First
-		value := Eval(scope, first)
-		return value
+		Error(firstValue.Location, "Runtime error")
 	case KindSecond:
 		var secondValue Second
-		var secondValueValue Tuple
 
 		decode(termData, &secondValue)
-		decode(secondValue.Value, &secondValueValue)
 
-		if secondValueValue.Kind == KindVar {
-			var val Var
-			decode(secondValue.Value, &val)
-			if input, ok := scope[val.Text].(string); ok {
-				tuple, err := toTuple(input)
+		value := Eval(scope, secondValue.Value)
 
-				if err != nil {
-					Error(secondValueValue.Location, "Runtime error")
-				}
-
-				return tuple.Second.(Second).Value
-			}
+		if tuple, ok := value.(Tuple); ok {
+			return tuple.Second
 		}
 
-		if secondValueValue.Kind != KindTuple {
-			Error(secondValueValue.Location, "Runtime error")
-		}
-		second := secondValueValue.Second
-		value := Eval(scope, second)
-		return value
+		Error(secondValue.Location, "Runtime error")
 	case KindTuple:
 		var tupleValue Tuple
 
@@ -184,7 +155,7 @@ func Eval(scope Scope, termData Term) Term {
 		first := Eval(scope, tupleValue.First)
 		second := Eval(scope, tupleValue.Second)
 
-		return fmt.Sprintf("(%v, %v)", first, second)
+		return Tuple{First: first, Second: second}
 	case KindCall:
 		var callValue Call
 
@@ -340,27 +311,11 @@ func toString(value interface{}) string {
 		return strconv.Itoa(int(value.(int32)))
 	} else if reflect.TypeOf(value).Kind().String() == "func" {
 		return "<#closure>"
+	} else if reflect.TypeOf(value) == reflect.TypeOf(Tuple{}) {
+		return fmt.Sprintf("(%v, %v)", toString(value.(Tuple).First), toString(value.(Tuple).Second))
 	}
 
 	return value.(string)
-}
-
-func toTuple(input string) (*Tuple, error) {
-	regex := regexp.MustCompile(`^\((.*), (.*)\)$`)
-	match := regex.FindStringSubmatch(input)
-
-	if len(match) != 3 {
-		return nil, fmt.Errorf("invalid tuple format: %s", input)
-	}
-
-	first := match[1]
-	second := match[2]
-
-	return &Tuple{
-		Kind:   "Tuple",
-		First:  First{Value: first, Kind: "First"},
-		Second: Second{Value: second, Kind: "Second"},
-	}, nil
 }
 
 func decode(term Term, value Term) Term {

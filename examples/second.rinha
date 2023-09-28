@@ -2,4 +2,5 @@ let _ = print(second((1, 2)));
 let value = (1, 2);
 let _ = print(second(value));
 let value2 = ("first", print("hello"));
-print(second(value2))
+let _ = print(second(value2));
+print(first(second(first((("first", ("firstS", "secondS")), "second 2")))))

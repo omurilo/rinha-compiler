@@ -69,4 +69,11 @@ let fibonacci = fn (n) => {
   }
 };
 let _ = print("fib(46):" + fib(46));
+let _ = print(first(second(first((("first", ("firstS", "secondS")), "second 2")))));
+let value = ((1, 2), 2);
+let _ = print(first(first(value)));
+let test = fn() => {
+  first(second(first(print((("first", ("firstS", "secondS")), "second 2")))))
+};
+let _ = print(test());
 print("Done showcase")
