@@ -118,7 +118,8 @@ func Eval(scope Scope, termData Term) Term {
 		decode(termData, &ifValue)
 
 		value := Eval(scope, ifValue.Condition)
-		if bool(value.(bool)) {
+		boolean, _ := toBool(value, value)
+		if boolean {
 			return Eval(scope, ifValue.Then)
 		} else {
 			return Eval(scope, ifValue.Otherwise)
