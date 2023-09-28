@@ -313,6 +313,8 @@ func toString(value interface{}) string {
 		return "<#closure>"
 	} else if reflect.TypeOf(value) == reflect.TypeOf(Tuple{}) {
 		return fmt.Sprintf("(%v, %v)", toString(value.(Tuple).First), toString(value.(Tuple).Second))
+	} else if reflect.TypeOf(value).Kind() == reflect.Bool {
+		return strconv.FormatBool(value.(bool))
 	}
 
 	return value.(string)
