@@ -16,6 +16,7 @@ type Scope map[string]Term
 var cache_scope map[string]Term = make(map[string]Term, 0)
 
 func Eval(scope Scope, termData Term) Term {
+	var impure_fn = false
 	kind := termData.(map[string]interface{})["kind"].(string)
 
 	switch TermKind(kind) {
@@ -166,6 +167,9 @@ func Eval(scope Scope, termData Term) Term {
 		var evalArgs []Term
 
 		for _, v := range callValue.Arguments {
+			if v.(map[string]interface{})["kind"] == "Print" {
+				impure_fn = true
+			}
 			arg := Eval(scope, v)
 			evalArgs = append(evalArgs, arg)
 		}
@@ -194,7 +198,9 @@ func Eval(scope Scope, termData Term) Term {
 
 		result := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
 
-		cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
+		if !impure_fn {
+			cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
+		}
 
 		return result
 	case KindFunction:
