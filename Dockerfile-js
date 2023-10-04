@@ -1,0 +1,5 @@
+FROM  node:18-bullseye-slim
+WORKDIR /
+COPY interpreter.js interpreter.js
+LABEL maintainer="Murilo Alves <hi@omurilo.dev>"
+ENTRYPOINT [ "node", "interpreter.js" ]
