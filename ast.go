@@ -144,6 +144,7 @@ type Location struct {
 
 type ClosureValue struct {
 	Body       Term
+	Env        Scope
 	Parameters Term
 }
 

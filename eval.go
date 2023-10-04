@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"strconv"
-
-	"github.com/mitchellh/mapstructure"
 )
 
 type Scope map[string]Term
@@ -123,9 +121,13 @@ func Eval(scope Scope, termData Term) Term {
 			Error(callValue["location"], fmt.Sprintf("Expected %d arguments, but got %d", len(closure.Value.Parameters.([]interface{})), len(callValue["arguments"].([]interface{}))))
 		}
 
-		isolatedScope := make(Scope, len(scope))
+		isolatedScope := make(Scope, len(closure.Value.Env))
 
 		for i, c := range scope {
+			isolatedScope[i] = c
+		}
+
+		for i, c := range closure.Value.Env {
 			isolatedScope[i] = c
 		}
 
@@ -141,11 +143,13 @@ func Eval(scope Scope, termData Term) Term {
 			Kind: "Closure",
 			Value: ClosureValue{
 				Body:       functionValue["value"],
+				Env:        scope,
 				Parameters: functionValue["parameters"],
 			},
 		}
 	case KindLet:
-		scope[termData.(map[string]interface{})["name"].(map[string]interface{})["text"].(string)] = Eval(scope, termData.(map[string]interface{})["value"])
+		letValue := termData.(map[string]interface{})
+		scope[letValue["name"].(map[string]interface{})["text"].(string)] = Eval(scope, letValue["value"])
 		return Eval(scope, termData.(map[string]interface{})["next"])
 	case KindVar:
 		var (
@@ -247,15 +251,4 @@ func isEqual(lhs interface{}, rhs interface{}, operation string, loc interface{}
 	}
 
 	return false
-}
-
-func decode(term Term, value Term) Term {
-	err := mapstructure.Decode(term, &value)
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil
-	}
-
-	return value
 }
