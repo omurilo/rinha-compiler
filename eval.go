@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"reflect"
 	"strconv"
 
@@ -13,10 +11,7 @@ import (
 
 type Scope map[string]Term
 
-var cache_scope map[string]Term = make(map[string]Term, 0)
-
 func Eval(scope Scope, termData Term) Term {
-	var impure_fn = false
 	kind := termData.(map[string]interface{})["kind"].(string)
 
 	switch TermKind(kind) {
@@ -167,27 +162,14 @@ func Eval(scope Scope, termData Term) Term {
 		var evalArgs []Term
 
 		for _, v := range callValue.Arguments {
-			if v.(map[string]interface{})["kind"] == "Print" {
-				impure_fn = true
-			}
 			arg := Eval(scope, v)
 			evalArgs = append(evalArgs, arg)
 		}
 
-		args_str := (*argsToString(evalArgs)).String()
 		fn_name := callValue.Callee.(map[string]interface{})["text"]
 
 		if _, ok := fn_name.(string); !ok {
 			fn_name = "anonymous"
-		}
-
-		if ok := args_str == ""; ok {
-			big, _ := rand.Int(rand.Reader, big.NewInt(1e6))
-			args_str = big.String() + fmt.Sprintf("%d", len(evalArgs))
-		}
-
-		if cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)] != nil {
-			return cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)]
 		}
 
 		fn := Eval(scope, callValue.Callee)
@@ -197,10 +179,6 @@ func Eval(scope Scope, termData Term) Term {
 		}
 
 		result := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
-
-		if !impure_fn {
-			cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
-		}
 
 		return result
 	case KindFunction:
@@ -344,26 +322,4 @@ func decode(term Term, value Term) Term {
 	}
 
 	return value
-}
-
-func argsToString(args []Term) *bytes.Buffer {
-	var buffer bytes.Buffer
-	for i := 0; i < len(args); i++ {
-		var value string
-		if reflect.TypeOf(args[i]).Kind() == reflect.Int32 {
-			value = strconv.Itoa(int(args[i].(int32)))
-		} else if reflect.TypeOf(args[i]).Kind().String() == "func" {
-			value = ""
-		} else if reflect.TypeOf(args[i]) == reflect.TypeOf(Tuple{}) {
-			value = fmt.Sprintf("(%v, %v)", toString(args[i].(Tuple).First), toString(args[i].(Tuple).Second))
-		} else if reflect.TypeOf(args[i]).Kind() == reflect.Bool {
-			value = strconv.FormatBool(args[i].(bool))
-		} else {
-			value = args[i].(string)
-		}
-
-		buffer.WriteString(value)
-	}
-
-	return &buffer
 }
