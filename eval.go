@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -39,17 +38,10 @@ func Eval(scope Scope, termData Term) Term {
 			rhsType := reflect.TypeOf(rhs).Kind()
 
 			if lhsType == reflect.String || rhsType == reflect.String {
-				var str bytes.Buffer
-				str.WriteString(toString(lhs))
-				str.WriteString(toString(rhs))
-				return str.String()
+				return toString(lhs) + toString(rhs)
 			}
 
 			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
-				return lhs.(int32) + rhs.(int32)
-			}
-
-			if lhsType == reflect.Int && rhsType == reflect.Int {
 				return lhs.(int32) + rhs.(int32)
 			}
 
@@ -70,9 +62,9 @@ func Eval(scope Scope, termData Term) Term {
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
 			return lhsInt % rhsInt
 		case Eq:
-			return fmt.Sprintf("%v", lhs) == fmt.Sprintf("%v", rhs)
+			return isEqual(lhs, rhs, "eq", binaryValue.Location)
 		case Neq:
-			return fmt.Sprintf("%v", lhs) != fmt.Sprintf("%v", rhs)
+			return !isEqual(lhs, rhs, "neq", binaryValue.Location)
 		case And:
 			lhsBool, rhsBool := toBool(lhs, rhs)
 			return lhsBool && rhsBool
@@ -97,13 +89,7 @@ func Eval(scope Scope, termData Term) Term {
 		decode(termData, &printValue)
 
 		value := Eval(scope, printValue.Value)
-		if reflect.TypeOf(value).Kind().String() == "func" {
-			fmt.Println("<#closure>")
-		} else if _, ok := value.(Tuple); ok {
-			fmt.Printf("(%v, %v)\n", toString(value.(Tuple).First), toString(value.(Tuple).Second))
-		} else {
-			fmt.Println(value)
-		}
+		fmt.Println(toString(value))
 		return value
 	case KindBool:
 		var boolValue Print
@@ -156,52 +142,39 @@ func Eval(scope Scope, termData Term) Term {
 		return Tuple{First: first, Second: second}
 	case KindCall:
 		var callValue Call
+		var closure Closure
 
 		decode(termData, &callValue)
-
-		var evalArgs []Term
-
-		for _, v := range callValue.Arguments {
-			arg := Eval(scope, v)
-			evalArgs = append(evalArgs, arg)
-		}
-
-		fn_name := callValue.Callee.(map[string]interface{})["text"]
-
-		if _, ok := fn_name.(string); !ok {
-			fn_name = "anonymous"
-		}
-
 		fn := Eval(scope, callValue.Callee)
 
-		if reflect.TypeOf(fn).Kind().String() != "func" {
-			return fn
+		decode(fn.(Closure), &closure)
+
+		if len(callValue.Arguments) != len(closure.Value.Parameters) {
+			Error(callValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(closure.Value.Parameters), len(callValue.Arguments)))
 		}
 
-		result := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
+		isolatedScope := Scope{}
 
-		return result
+		for i, v := range scope {
+			isolatedScope[i] = v
+		}
+
+		for i, v := range closure.Value.Parameters {
+			isolatedScope[v.Text] = Eval(scope, callValue.Arguments[i])
+		}
+
+		return Eval(isolatedScope, closure.Value.Body)
 	case KindFunction:
 		var functionValue Function
 
 		decode(termData, &functionValue)
 
-		return func(args []Term) Term {
-			if len(args) != len(functionValue.Parameters) {
-				Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
-			}
-
-			isolatedScope := Scope{}
-			for k, v := range scope {
-				isolatedScope[k] = v
-			}
-
-			for i, v := range functionValue.Parameters {
-				isolatedScope[v.Text] = args[i]
-				isolatedScope[fmt.Sprintf("%s#%v", v.Text, i+1)] = args[i]
-			}
-
-			return Eval(isolatedScope, functionValue.Value)
+		return Closure{
+			Kind: "Closure",
+			Value: ClosureValue{
+				Body:       functionValue.Value,
+				Parameters: functionValue.Parameters,
+			},
 		}
 	case KindLet:
 		var letValue Let
@@ -230,26 +203,15 @@ func Eval(scope Scope, termData Term) Term {
 }
 
 func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (int32, int32) {
-	var lhsInt int32
-	var rhsInt int32
-	var okLhs bool = false
-	var okRhs bool = false
-
-	if _, ok := lhs.(int32); ok {
-		lhsInt = lhs.(int32)
-		okLhs = true
-	}
-
-	if _, ok := rhs.(int32); ok {
-		rhsInt = rhs.(int32)
-		okRhs = true
-	}
-
-	if !okLhs || !okRhs {
+	if _, ok := lhs.(int32); !ok {
 		Error(loc, fmt.Sprintf("Invalid %s operation", operation))
 	}
 
-	return lhsInt, rhsInt
+	if _, ok := rhs.(int32); !ok {
+		Error(loc, fmt.Sprintf("Invalid %s operation", operation))
+	}
+
+	return lhs.(int32), rhs.(int32)
 }
 
 func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
@@ -302,7 +264,7 @@ func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 func toString(value interface{}) string {
 	if reflect.TypeOf(value).Kind() == reflect.Int32 {
 		return strconv.Itoa(int(value.(int32)))
-	} else if reflect.TypeOf(value).Kind().String() == "func" {
+	} else if reflect.TypeOf(value) == reflect.TypeOf(Closure{}) && value.(Closure).Kind == "Closure" {
 		return "<#closure>"
 	} else if reflect.TypeOf(value) == reflect.TypeOf(Tuple{}) {
 		return fmt.Sprintf("(%v, %v)", toString(value.(Tuple).First), toString(value.(Tuple).Second))
@@ -311,6 +273,14 @@ func toString(value interface{}) string {
 	}
 
 	return value.(string)
+}
+
+func isEqual(lhs interface{}, rhs interface{}, operation string, loc Location) bool {
+	if reflect.TypeOf(lhs) == reflect.TypeOf(rhs) {
+		return lhs == rhs
+	} else {
+		return false
+	}
 }
 
 func decode(term Term, value Term) Term {

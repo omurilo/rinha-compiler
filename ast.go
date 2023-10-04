@@ -141,3 +141,13 @@ type Location struct {
 	End      uint32 `json:"end"`
 	Filename string `json:"filename"`
 }
+
+type ClosureValue struct {
+	Body       Term
+	Parameters []Parameter
+}
+
+type Closure struct {
+	Kind  string
+	Value ClosureValue
+}
