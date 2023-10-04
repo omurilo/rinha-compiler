@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
 
 	"github.com/mitchellh/mapstructure"
@@ -15,185 +14,146 @@ func Eval(scope Scope, termData Term) Term {
 
 	switch TermKind(kind) {
 	case KindInt:
-		var intValue Int
-		decode(termData, &intValue)
-
-		return intValue.Value
+		return Int{Value: int32(termData.(map[string]interface{})["value"].(float64))}
 	case KindStr:
-		var strValue Str
-		decode(termData, &strValue)
-
-		return strValue.Value
+		return Str{Value: termData.(map[string]interface{})["value"].(string)}
 	case KindBinary:
-		var binaryValue Binary
+		var binaryValue = termData.(map[string]interface{})
 
-		decode(termData, &binaryValue)
-
-		lhs := Eval(scope, binaryValue.LHS)
-		op := BinaryOp(binaryValue.Op)
-		rhs := Eval(scope, binaryValue.RHS)
+		lhs := Eval(scope, binaryValue["lhs"])
+		op := BinaryOp(binaryValue["op"].(string))
+		rhs := Eval(scope, binaryValue["rhs"])
 		switch op {
 		case Add:
-			lhsType := reflect.TypeOf(lhs).Kind()
-			rhsType := reflect.TypeOf(rhs).Kind()
-
-			if lhsType == reflect.String || rhsType == reflect.String {
-				return toString(lhs) + toString(rhs)
+			if _, ok := lhs.(Str); ok {
+				return Str{Value: toString(lhs) + toString(rhs)}
 			}
 
-			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
-				return lhs.(int32) + rhs.(int32)
+			if _, ok := rhs.(Str); ok {
+				return Str{Value: toString(lhs) + toString(rhs)}
 			}
 
-			Error(binaryValue.Location, "invalid add operation")
+			if lhs, ok := lhs.(Int); ok {
+				if rhs, ok := rhs.(Int); ok {
+					return Int{Value: lhs.Value + rhs.Value}
+				}
+			}
+
+			Error(binaryValue["location"], "invalid add operation")
 		case Sub:
-			lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue.Location)
-			return lhsInt - rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue["location"])
+			return Int{Value: lhsInt - rhsInt}
 		case Mul:
-			lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue.Location)
-			return lhsInt * rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue["location"])
+			return Int{Value: lhsInt * rhsInt}
 		case Div:
-			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue.Location)
+			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue["location"])
 			if rhsInt == 0 {
-				Error(binaryValue.Location, "division by zero")
+				Error(binaryValue["location"], "division by zero")
 			}
-			return lhsInt / rhsInt
+			return Int{Value: lhsInt / rhsInt}
 		case Rem:
-			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
-			return lhsInt % rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue["location"])
+			return Int{Value: lhsInt % rhsInt}
 		case Eq:
-			return isEqual(lhs, rhs, "eq", binaryValue.Location)
+			return Bool{Value: isEqual(lhs, rhs, "eq", binaryValue["location"])}
 		case Neq:
-			return !isEqual(lhs, rhs, "neq", binaryValue.Location)
+			return Bool{Value: !isEqual(lhs, rhs, "neq", binaryValue["location"])}
 		case And:
 			lhsBool, rhsBool := toBool(lhs, rhs)
-			return lhsBool && rhsBool
+			return Bool{Value: lhsBool && rhsBool}
 		case Or:
 			lhsBool, rhsBool := toBool(lhs, rhs)
-			return lhsBool || rhsBool
+			return Bool{Value: lhsBool || rhsBool}
 		case Lt:
-			lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue.Location)
-			return lhsInt < rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue["location"])
+			return Bool{Value: lhsInt < rhsInt}
 		case Gt:
-			lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue.Location)
-			return lhsInt > rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue["location"])
+			return Bool{Value: lhsInt > rhsInt}
 		case Lte:
-			lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue.Location)
-			return lhsInt <= rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue["location"])
+			return Bool{Value: lhsInt <= rhsInt}
 		case Gte:
-			lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue.Location)
-			return lhsInt >= rhsInt
+			lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue["location"])
+			return Bool{Value: lhsInt >= rhsInt}
 		}
 	case KindPrint:
-		var printValue Print
-		decode(termData, &printValue)
-
-		value := Eval(scope, printValue.Value)
+		value := Eval(scope, termData.(map[string]interface{})["value"])
 		fmt.Println(toString(value))
 		return value
 	case KindBool:
-		var boolValue Print
-		decode(termData, &boolValue)
-
-		return boolValue.Value
+		return Bool{Value: termData.(map[string]interface{})["value"].(bool)}
 	case KindIf:
-		var ifValue If
-		decode(termData, &ifValue)
-
-		value := Eval(scope, ifValue.Condition)
+		value := Eval(scope, termData.(map[string]interface{})["condition"])
 		boolean, _ := toBool(value, value)
 		if boolean {
-			return Eval(scope, ifValue.Then)
+			return Eval(scope, termData.(map[string]interface{})["then"])
 		} else {
-			return Eval(scope, ifValue.Otherwise)
+			return Eval(scope, termData.(map[string]interface{})["otherwise"])
 		}
 	case KindFirst:
-		var firstValue First
-
-		decode(termData, &firstValue)
-
-		value := Eval(scope, firstValue.Value)
+		value := Eval(scope, termData.(map[string]interface{})["value"])
 
 		if tuple, ok := value.(Tuple); ok {
 			return tuple.First
 		}
 
-		Error(firstValue.Location, "Runtime error")
+		Error(termData.(map[string]interface{})["location"], "Runtime error")
 	case KindSecond:
-		var secondValue Second
-
-		decode(termData, &secondValue)
-
-		value := Eval(scope, secondValue.Value)
+		value := Eval(scope, termData.(map[string]interface{})["value"])
 
 		if tuple, ok := value.(Tuple); ok {
 			return tuple.Second
 		}
 
-		Error(secondValue.Location, "Runtime error")
+		Error(termData.(map[string]interface{})["location"], "Runtime error")
 	case KindTuple:
-		var tupleValue Tuple
-
-		decode(termData, &tupleValue)
-
-		first := Eval(scope, tupleValue.First)
-		second := Eval(scope, tupleValue.Second)
+		first := Eval(scope, termData.(map[string]interface{})["first"])
+		second := Eval(scope, termData.(map[string]interface{})["second"])
 
 		return Tuple{First: first, Second: second}
 	case KindCall:
-		var callValue Call
-		var closure Closure
+		callValue := termData.(map[string]interface{})
+		fn := Eval(scope, callValue["callee"])
 
-		decode(termData, &callValue)
-		fn := Eval(scope, callValue.Callee)
+		closure := fn.(Closure)
 
-		decode(fn.(Closure), &closure)
-
-		if len(callValue.Arguments) != len(closure.Value.Parameters) {
-			Error(callValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(closure.Value.Parameters), len(callValue.Arguments)))
+		if len(callValue["arguments"].([]interface{})) != len(closure.Value.Parameters.([]interface{})) {
+			Error(callValue["location"], fmt.Sprintf("Expected %d arguments, but got %d", len(closure.Value.Parameters.([]interface{})), len(callValue["arguments"].([]interface{}))))
 		}
 
-		isolatedScope := Scope{}
+		isolatedScope := make(Scope, len(scope))
 
-		for i, v := range scope {
-			isolatedScope[i] = v
+		for i, c := range scope {
+			isolatedScope[i] = c
 		}
 
-		for i, v := range closure.Value.Parameters {
-			isolatedScope[v.Text] = Eval(scope, callValue.Arguments[i])
+		for i, v := range closure.Value.Parameters.([]interface{}) {
+			isolatedScope[v.(map[string]interface{})["text"].(string)] = Eval(scope, callValue["arguments"].([]interface{})[i])
 		}
 
 		return Eval(isolatedScope, closure.Value.Body)
 	case KindFunction:
-		var functionValue Function
-
-		decode(termData, &functionValue)
+		functionValue := termData.(map[string]interface{})
 
 		return Closure{
 			Kind: "Closure",
 			Value: ClosureValue{
-				Body:       functionValue.Value,
-				Parameters: functionValue.Parameters,
+				Body:       functionValue["value"],
+				Parameters: functionValue["parameters"],
 			},
 		}
 	case KindLet:
-		var letValue Let
-
-		decode(termData, &letValue)
-
-		scope[letValue.Name.Text] = Eval(scope, letValue.Value)
-		return Eval(scope, letValue.Next)
+		scope[termData.(map[string]interface{})["name"].(map[string]interface{})["text"].(string)] = Eval(scope, termData.(map[string]interface{})["value"])
+		return Eval(scope, termData.(map[string]interface{})["next"])
 	case KindVar:
-		var varValue Var
-
-		decode(termData, &varValue)
-
 		var (
 			value Term
 			ok    bool
 		)
-		if value, ok = scope[varValue.Text]; !ok {
-			Error(varValue.Location, fmt.Sprintf("undefined variable %s", varValue.Text))
+		if value, ok = scope[termData.(map[string]interface{})["text"].(string)]; !ok {
+			Error(termData.(map[string]interface{})["location"], fmt.Sprintf("undefined variable %s", termData.(map[string]interface{})["text"].(string)))
 		}
 
 		return value
@@ -202,52 +162,52 @@ func Eval(scope Scope, termData Term) Term {
 	return nil
 }
 
-func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (int32, int32) {
-	if _, ok := lhs.(int32); !ok {
+func toInt(lhs interface{}, rhs interface{}, operation string, loc interface{}) (int32, int32) {
+	if _, ok := lhs.(Int); !ok {
 		Error(loc, fmt.Sprintf("Invalid %s operation", operation))
 	}
 
-	if _, ok := rhs.(int32); !ok {
+	if _, ok := rhs.(Int); !ok {
 		Error(loc, fmt.Sprintf("Invalid %s operation", operation))
 	}
 
-	return lhs.(int32), rhs.(int32)
+	return lhs.(Int).Value, rhs.(Int).Value
 }
 
 func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 	var okLhs bool = false
 	var okRhs bool = false
 
-	if _, ok := lhs.(int32); ok {
-		if lhs != 0 {
+	if _, ok := lhs.(Int); ok {
+		if lhs.(Int).Value != 0 {
 			okLhs = true
 		}
 	}
 
-	if _, ok := rhs.(int32); ok {
-		if rhs != 0 {
+	if _, ok := rhs.(Int); ok {
+		if rhs.(Int).Value != 0 {
 			okRhs = true
 		}
 	}
 
-	if _, ok := lhs.(string); ok {
-		if lhs != "" {
+	if _, ok := lhs.(Str); ok {
+		if lhs.(Str).Value != "" {
 			okLhs = true
 		}
 	}
 
-	if _, ok := rhs.(string); ok {
-		if rhs != "" {
+	if _, ok := rhs.(Str); ok {
+		if rhs.(Str).Value != "" {
 			okRhs = true
 		}
 	}
 
-	if _, ok := lhs.(bool); ok {
-		okLhs = lhs.(bool)
+	if _, ok := lhs.(Bool); ok {
+		okLhs = lhs.(Bool).Value
 	}
 
-	if _, ok := rhs.(bool); ok {
-		okRhs = rhs.(bool)
+	if _, ok := rhs.(Bool); ok {
+		okRhs = rhs.(Bool).Value
 	}
 
 	if lhs == nil {
@@ -262,25 +222,31 @@ func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 }
 
 func toString(value interface{}) string {
-	if reflect.TypeOf(value).Kind() == reflect.Int32 {
-		return strconv.Itoa(int(value.(int32)))
-	} else if reflect.TypeOf(value) == reflect.TypeOf(Closure{}) && value.(Closure).Kind == "Closure" {
+	if _, ok := value.(Int); ok {
+		return strconv.Itoa(int(value.(Int).Value))
+	} else if _, ok := value.(Closure); ok {
 		return "<#closure>"
-	} else if reflect.TypeOf(value) == reflect.TypeOf(Tuple{}) {
+	} else if _, ok := value.(Tuple); ok {
 		return fmt.Sprintf("(%v, %v)", toString(value.(Tuple).First), toString(value.(Tuple).Second))
-	} else if reflect.TypeOf(value).Kind() == reflect.Bool {
-		return strconv.FormatBool(value.(bool))
+	} else if _, ok := value.(Bool); ok {
+		return strconv.FormatBool(value.(Bool).Value)
 	}
 
-	return value.(string)
+	return value.(Str).Value
 }
 
-func isEqual(lhs interface{}, rhs interface{}, operation string, loc Location) bool {
-	if reflect.TypeOf(lhs) == reflect.TypeOf(rhs) {
-		return lhs == rhs
-	} else {
-		return false
+func isEqual(lhs interface{}, rhs interface{}, operation string, loc interface{}) bool {
+	if _, ok := lhs.(Int); ok {
+		if _, ok := rhs.(Int); ok {
+			return lhs.(Int).Value == rhs.(Int).Value
+		}
+	} else if _, ok := lhs.(Str); ok {
+		if _, ok := rhs.(Str); ok {
+			return lhs.(Str).Value == rhs.(Str).Value
+		}
 	}
+
+	return false
 }
 
 func decode(term Term, value Term) Term {

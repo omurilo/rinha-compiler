@@ -144,7 +144,7 @@ type Location struct {
 
 type ClosureValue struct {
 	Body       Term
-	Parameters []Parameter
+	Parameters Term
 }
 
 type Closure struct {
