@@ -45,6 +45,6 @@ func main() {
 	}
 	SCOPE_DEFAULT_SIZE := 8
 	scope := make(Scope, SCOPE_DEFAULT_SIZE)
-	runtime.GOMAXPROCS(10000)
+	runtime.GOMAXPROCS(2)
 	Eval(scope, ast.Expression)
 }

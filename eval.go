@@ -7,160 +7,171 @@ import (
 
 type Scope map[string]Term
 
-func Eval(scope Scope, termData Term) Term {
-	kind := termData.(map[string]interface{})["kind"].(string)
+func Eval(scope Scope, initialTermData Term) Term {
+	stack := []interface{}{initialTermData}
 
-	switch TermKind(kind) {
-	case KindInt:
-		return Int{Value: int32(termData.(map[string]interface{})["value"].(float64))}
-	case KindStr:
-		return Str{Value: termData.(map[string]interface{})["value"].(string)}
-	case KindBinary:
-		var binaryValue = termData.(map[string]interface{})
+	for len(stack) > 0 {
+		termData := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
 
-		lhs := Eval(scope, binaryValue["lhs"])
-		op := BinaryOp(binaryValue["op"].(string))
-		rhs := Eval(scope, binaryValue["rhs"])
-		switch op {
-		case Add:
-			if _, ok := lhs.(Str); ok {
-				return Str{Value: toString(lhs) + toString(rhs)}
+		kind := termData.(map[string]interface{})["kind"].(string)
+
+		switch TermKind(kind) {
+		case KindInt:
+			return Int{Value: int32(termData.(map[string]interface{})["value"].(float64))}
+		case KindStr:
+			return Str{Value: termData.(map[string]interface{})["value"].(string)}
+		case KindBool:
+			return Bool{Value: termData.(map[string]interface{})["value"].(bool)}
+		case KindLet:
+			letValue := termData.(map[string]interface{})
+			value := Eval(scope, letValue["value"])
+			scope[letValue["name"].(map[string]interface{})["text"].(string)] = value
+			stack = append(stack, termData.(map[string]interface{})["next"])
+		case KindPrint:
+			value := Eval(scope, termData.(map[string]interface{})["value"])
+			fmt.Println(toString(value))
+			return value
+		case KindCall:
+			callValue := termData.(map[string]interface{})
+			fn := Eval(scope, callValue["callee"])
+
+			isolatedScope := make(Scope, len(scope))
+
+			for i, v := range scope {
+				isolatedScope[i] = v
 			}
 
-			if _, ok := rhs.(Str); ok {
-				return Str{Value: toString(lhs) + toString(rhs)}
+			for i, c := range fn.(Closure).Value.Env {
+				isolatedScope[i] = c
 			}
 
-			if lhs, ok := lhs.(Int); ok {
-				if rhs, ok := rhs.(Int); ok {
-					return Int{Value: lhs.Value + rhs.Value}
+			for i, arg := range callValue["arguments"].([]interface{}) {
+				parameter := fn.(Closure).Value.Parameters.([]interface{})[i]
+				isolatedScope[parameter.(map[string]interface{})["text"].(string)] = Eval(scope, arg)
+			}
+
+			scope = isolatedScope
+
+			// Push the body of the function onto the stack
+			stack = append(stack, fn.(Closure).Value.Body)
+		case KindFunction:
+			functionValue := termData.(map[string]interface{})
+
+			return Closure{
+				Kind: "Closure",
+				Value: ClosureValue{
+					Body:       functionValue["value"],
+					Env:        scope,
+					Parameters: functionValue["parameters"],
+				},
+			}
+		case KindVar:
+			var (
+				value Term
+				ok    bool
+			)
+			if value, ok = scope[termData.(map[string]interface{})["text"].(string)]; !ok {
+				Error(termData.(map[string]interface{})["location"], fmt.Sprintf("undefined variable %s", termData.(map[string]interface{})["text"].(string)))
+			}
+
+			return value
+		case KindIf:
+			condition := Eval(scope, termData.(map[string]interface{})["condition"])
+			boolean, _ := toBool(condition, nil)
+
+			if boolean {
+				// Push the "then" clause onto the stack
+				stack = append(stack, termData.(map[string]interface{})["then"])
+			} else {
+				// Push the "otherwise" clause onto the stack
+				stack = append(stack, termData.(map[string]interface{})["otherwise"])
+			}
+		case KindBinary:
+			var binaryValue = termData.(map[string]interface{})
+
+			lhs := Eval(scope, binaryValue["lhs"])
+			op := BinaryOp(binaryValue["op"].(string))
+			rhs := Eval(scope, binaryValue["rhs"])
+			switch op {
+			case Add:
+				if _, ok := lhs.(Str); ok {
+					return Str{Value: toString(lhs) + toString(rhs)}
 				}
+
+				if _, ok := rhs.(Str); ok {
+					return Str{Value: toString(lhs) + toString(rhs)}
+				}
+
+				if lhs, ok := lhs.(Int); ok {
+					if rhs, ok := rhs.(Int); ok {
+						return Int{Value: lhs.Value + rhs.Value}
+					}
+				}
+
+				Error(binaryValue["location"], "invalid add operation")
+			case Sub:
+				lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue["location"])
+				return Int{Value: lhsInt - rhsInt}
+			case Mul:
+				lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue["location"])
+				return Int{Value: lhsInt * rhsInt}
+			case Div:
+				lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue["location"])
+				if rhsInt == 0 {
+					Error(binaryValue["location"], "division by zero")
+				}
+				return Int{Value: lhsInt / rhsInt}
+			case Rem:
+				lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue["location"])
+				return Int{Value: lhsInt % rhsInt}
+			case Eq:
+				return Bool{Value: isEqual(lhs, rhs, "eq", binaryValue["location"])}
+			case Neq:
+				return Bool{Value: !isEqual(lhs, rhs, "neq", binaryValue["location"])}
+			case And:
+				lhsBool, rhsBool := toBool(lhs, rhs)
+				return Bool{Value: lhsBool && rhsBool}
+			case Or:
+				lhsBool, rhsBool := toBool(lhs, rhs)
+				return Bool{Value: lhsBool || rhsBool}
+			case Lt:
+				lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue["location"])
+				return Bool{Value: lhsInt < rhsInt}
+			case Gt:
+				lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue["location"])
+				return Bool{Value: lhsInt > rhsInt}
+			case Lte:
+				lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue["location"])
+				return Bool{Value: lhsInt <= rhsInt}
+			case Gte:
+				lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue["location"])
+				return Bool{Value: lhsInt >= rhsInt}
+			}
+		case KindFirst:
+			value := Eval(scope, termData.(map[string]interface{})["value"])
+
+			if tuple, ok := value.(Tuple); ok {
+				return tuple.First
 			}
 
-			Error(binaryValue["location"], "invalid add operation")
-		case Sub:
-			lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue["location"])
-			return Int{Value: lhsInt - rhsInt}
-		case Mul:
-			lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue["location"])
-			return Int{Value: lhsInt * rhsInt}
-		case Div:
-			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue["location"])
-			if rhsInt == 0 {
-				Error(binaryValue["location"], "division by zero")
+			Error(termData.(map[string]interface{})["location"], "Runtime error")
+		case KindSecond:
+			value := Eval(scope, termData.(map[string]interface{})["value"])
+
+			if tuple, ok := value.(Tuple); ok {
+				return tuple.Second
 			}
-			return Int{Value: lhsInt / rhsInt}
-		case Rem:
-			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue["location"])
-			return Int{Value: lhsInt % rhsInt}
-		case Eq:
-			return Bool{Value: isEqual(lhs, rhs, "eq", binaryValue["location"])}
-		case Neq:
-			return Bool{Value: !isEqual(lhs, rhs, "neq", binaryValue["location"])}
-		case And:
-			lhsBool, rhsBool := toBool(lhs, rhs)
-			return Bool{Value: lhsBool && rhsBool}
-		case Or:
-			lhsBool, rhsBool := toBool(lhs, rhs)
-			return Bool{Value: lhsBool || rhsBool}
-		case Lt:
-			lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue["location"])
-			return Bool{Value: lhsInt < rhsInt}
-		case Gt:
-			lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue["location"])
-			return Bool{Value: lhsInt > rhsInt}
-		case Lte:
-			lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue["location"])
-			return Bool{Value: lhsInt <= rhsInt}
-		case Gte:
-			lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue["location"])
-			return Bool{Value: lhsInt >= rhsInt}
+
+			Error(termData.(map[string]interface{})["location"], "Runtime error")
+		case KindTuple:
+			first := Eval(scope, termData.(map[string]interface{})["first"])
+			second := Eval(scope, termData.(map[string]interface{})["second"])
+
+			return Tuple{First: first, Second: second}
+		default:
+			fmt.Println("kind", kind)
 		}
-	case KindPrint:
-		value := Eval(scope, termData.(map[string]interface{})["value"])
-		fmt.Println(toString(value))
-		return value
-	case KindBool:
-		return Bool{Value: termData.(map[string]interface{})["value"].(bool)}
-	case KindIf:
-		value := Eval(scope, termData.(map[string]interface{})["condition"])
-		boolean, _ := toBool(value, value)
-		if boolean {
-			return Eval(scope, termData.(map[string]interface{})["then"])
-		} else {
-			return Eval(scope, termData.(map[string]interface{})["otherwise"])
-		}
-	case KindFirst:
-		value := Eval(scope, termData.(map[string]interface{})["value"])
-
-		if tuple, ok := value.(Tuple); ok {
-			return tuple.First
-		}
-
-		Error(termData.(map[string]interface{})["location"], "Runtime error")
-	case KindSecond:
-		value := Eval(scope, termData.(map[string]interface{})["value"])
-
-		if tuple, ok := value.(Tuple); ok {
-			return tuple.Second
-		}
-
-		Error(termData.(map[string]interface{})["location"], "Runtime error")
-	case KindTuple:
-		first := Eval(scope, termData.(map[string]interface{})["first"])
-		second := Eval(scope, termData.(map[string]interface{})["second"])
-
-		return Tuple{First: first, Second: second}
-	case KindCall:
-		callValue := termData.(map[string]interface{})
-		fn := Eval(scope, callValue["callee"])
-
-		closure := fn.(Closure)
-
-		if len(callValue["arguments"].([]interface{})) != len(closure.Value.Parameters.([]interface{})) {
-			Error(callValue["location"], fmt.Sprintf("Expected %d arguments, but got %d", len(closure.Value.Parameters.([]interface{})), len(callValue["arguments"].([]interface{}))))
-		}
-
-		isolatedScope := make(Scope, len(closure.Value.Env))
-
-		for i, c := range scope {
-			isolatedScope[i] = c
-		}
-
-		for i, c := range closure.Value.Env {
-			isolatedScope[i] = c
-		}
-
-		for i, v := range closure.Value.Parameters.([]interface{}) {
-			isolatedScope[v.(map[string]interface{})["text"].(string)] = Eval(scope, callValue["arguments"].([]interface{})[i])
-		}
-
-		return Eval(isolatedScope, closure.Value.Body)
-	case KindFunction:
-		functionValue := termData.(map[string]interface{})
-
-		return Closure{
-			Kind: "Closure",
-			Value: ClosureValue{
-				Body:       functionValue["value"],
-				Env:        scope,
-				Parameters: functionValue["parameters"],
-			},
-		}
-	case KindLet:
-		letValue := termData.(map[string]interface{})
-		scope[letValue["name"].(map[string]interface{})["text"].(string)] = Eval(scope, letValue["value"])
-		return Eval(scope, termData.(map[string]interface{})["next"])
-	case KindVar:
-		var (
-			value Term
-			ok    bool
-		)
-		if value, ok = scope[termData.(map[string]interface{})["text"].(string)]; !ok {
-			Error(termData.(map[string]interface{})["location"], fmt.Sprintf("undefined variable %s", termData.(map[string]interface{})["text"].(string)))
-		}
-
-		return value
 	}
 
 	return nil
