@@ -44,7 +44,7 @@ func TestExamples(t *testing.T) {
 		SCOPE_DEFAULT_SIZE := 8
 		scope := make(Scope, SCOPE_DEFAULT_SIZE)
 		t.Log(">>>>>>>>>>>> ", fileName)
-		Eval(scope, ast.Expression)
+		Eval(scope, ast.Expression, false)
 		t.Log()
 	}
 }

@@ -1,12 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"runtime"
 )
 
 const DEFAULT_FILE_PATH = "/var/rinha/source.rinha.json"
@@ -15,11 +14,9 @@ func main() {
 	var stdin []byte
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			stdin = append(stdin, scanner.Bytes()...)
-		}
-		if err := scanner.Err(); err != nil {
+		var err error
+		stdin, err = io.ReadAll(os.Stdin)
+		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
@@ -43,8 +40,6 @@ func main() {
 		fmt.Println("Error decoding JSON:", err)
 		return
 	}
-	SCOPE_DEFAULT_SIZE := 8
-	scope := make(Scope, SCOPE_DEFAULT_SIZE)
-	runtime.GOMAXPROCS(10000)
-	Eval(scope, ast.Expression)
+	scope := make(Scope, 8)
+	Eval(scope, ast.Expression, false)
 }
