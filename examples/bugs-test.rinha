@@ -1,0 +1,27 @@
+// Bug #2: Eq compara via fmt.Sprintf — tupla vs string com mesma repr retorna true
+let tuple_val = (1, 2);
+let eq_result = tuple_val == "(1, 2)";
+let _ = print(eq_result);
+// Esperado: false  |  Atual (bugado): true
+
+// Bug #3: funcao com print interno é cacheada — segundo call nao executa o body
+let log_double = fn(x) => {
+  let _ = print(x);
+  x * 2
+};
+let _ = log_double(5);
+let _ = log_double(5);
+// Esperado: 5 (duas vezes)  |  Atual (bugado): 5 (uma vez, segundo call retorna cache)
+
+// Bug #5: closure como argumento contribui "" pra chave do cache
+// apply_with_offset(5, add_ten) e apply_with_offset(5, add_hundred) viram chave "apply_with_offset#5"
+let apply_with_offset = fn(offset, transform) => {
+  transform(offset)
+};
+let add_ten = fn(x) => { x + 10 };
+let add_hundred = fn(x) => { x + 100 };
+let r1 = apply_with_offset(5, add_ten);
+let r2 = apply_with_offset(5, add_hundred);
+let _ = print(r1);
+print(r2)
+// Esperado: 15 e 105  |  Atual (bugado): 15 e 15

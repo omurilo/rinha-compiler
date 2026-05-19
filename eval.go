@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"reflect"
 	"strconv"
 
@@ -15,8 +13,43 @@ type Scope map[string]Term
 
 var cache_scope map[string]Term = make(map[string]Term, 0)
 
-func Eval(scope Scope, termData Term) Term {
-	var impure_fn = false
+// closureSeq gives each Closure a unique identity, since Go closures from
+// the same literal share the same code pointer and can't be told apart via %p.
+var closureSeq uint64
+
+// Closure wraps a function with its impurity flag and a unique ID for caching.
+type Closure struct {
+	fn     func([]Term) Term
+	impure bool
+	id     uint64
+}
+
+// TailCall is returned by Eval when a call is in tail position.
+// The trampoline in KindCall resolves it without growing the Go stack.
+type TailCall struct {
+	closure Closure
+	args    []Term
+}
+
+// trampoline drives a tail-call chain to completion.
+// It keeps calling closures as long as they return TailCall, then returns
+// the final non-TailCall value.
+func trampoline(closure Closure, args []Term) Term {
+	result := closure.fn(args)
+	for {
+		tc, ok := result.(TailCall)
+		if !ok {
+			return result
+		}
+		result = tc.closure.fn(tc.args)
+	}
+}
+
+// Eval evaluates a raw AST node.
+// tail signals that the current expression is in tail position — a KindCall in
+// tail position returns TailCall instead of executing, so the caller's
+// trampoline can reuse the current stack frame.
+func Eval(scope Scope, termData Term, tail bool) Term {
 	kind := termData.(map[string]interface{})["kind"].(string)
 
 	switch TermKind(kind) {
@@ -35,9 +68,9 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &binaryValue)
 
-		lhs := Eval(scope, binaryValue.LHS)
+		lhs := Eval(scope, binaryValue.LHS, false)
 		op := BinaryOp(binaryValue.Op)
-		rhs := Eval(scope, binaryValue.RHS)
+		rhs := Eval(scope, binaryValue.RHS, false)
 		switch op {
 		case Add:
 			lhsType := reflect.TypeOf(lhs).Kind()
@@ -51,10 +84,6 @@ func Eval(scope Scope, termData Term) Term {
 			}
 
 			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
-				return lhs.(int32) + rhs.(int32)
-			}
-
-			if lhsType == reflect.Int && rhsType == reflect.Int {
 				return lhs.(int32) + rhs.(int32)
 			}
 
@@ -75,9 +104,9 @@ func Eval(scope Scope, termData Term) Term {
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
 			return lhsInt % rhsInt
 		case Eq:
-			return fmt.Sprintf("%v", lhs) == fmt.Sprintf("%v", rhs)
+			return equalTerms(lhs, rhs)
 		case Neq:
-			return fmt.Sprintf("%v", lhs) != fmt.Sprintf("%v", rhs)
+			return !equalTerms(lhs, rhs)
 		case And:
 			lhsBool, rhsBool := toBool(lhs, rhs)
 			return lhsBool && rhsBool
@@ -101,8 +130,8 @@ func Eval(scope Scope, termData Term) Term {
 		var printValue Print
 		decode(termData, &printValue)
 
-		value := Eval(scope, printValue.Value)
-		if reflect.TypeOf(value).Kind().String() == "func" {
+		value := Eval(scope, printValue.Value, false)
+		if _, ok := value.(Closure); ok {
 			fmt.Println("<#closure>")
 		} else if _, ok := value.(Tuple); ok {
 			fmt.Printf("(%v, %v)\n", toString(value.(Tuple).First), toString(value.(Tuple).Second))
@@ -111,7 +140,7 @@ func Eval(scope Scope, termData Term) Term {
 		}
 		return value
 	case KindBool:
-		var boolValue Print
+		var boolValue Bool
 		decode(termData, &boolValue)
 
 		return boolValue.Value
@@ -119,19 +148,21 @@ func Eval(scope Scope, termData Term) Term {
 		var ifValue If
 		decode(termData, &ifValue)
 
-		value := Eval(scope, ifValue.Condition)
-		boolean, _ := toBool(value, value)
-		if boolean {
-			return Eval(scope, ifValue.Then)
-		} else {
-			return Eval(scope, ifValue.Otherwise)
+		condition := Eval(scope, ifValue.Condition, false)
+		boolVal, ok := condition.(bool)
+		if !ok {
+			Error(ifValue.Location, "if condition must be a boolean")
 		}
+		if boolVal {
+			return Eval(scope, ifValue.Then, tail)
+		}
+		return Eval(scope, ifValue.Otherwise, tail)
 	case KindFirst:
 		var firstValue First
 
 		decode(termData, &firstValue)
 
-		value := Eval(scope, firstValue.Value)
+		value := Eval(scope, firstValue.Value, false)
 
 		if tuple, ok := value.(Tuple); ok {
 			return tuple.First
@@ -143,7 +174,7 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &secondValue)
 
-		value := Eval(scope, secondValue.Value)
+		value := Eval(scope, secondValue.Value, false)
 
 		if tuple, ok := value.(Tuple); ok {
 			return tuple.Second
@@ -155,8 +186,8 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &tupleValue)
 
-		first := Eval(scope, tupleValue.First)
-		second := Eval(scope, tupleValue.Second)
+		first := Eval(scope, tupleValue.First, false)
+		second := Eval(scope, tupleValue.Second, false)
 
 		return Tuple{First: first, Second: second}
 	case KindCall:
@@ -167,39 +198,36 @@ func Eval(scope Scope, termData Term) Term {
 		var evalArgs []Term
 
 		for _, v := range callValue.Arguments {
-			if v.(map[string]interface{})["kind"] == "Print" {
-				impure_fn = true
-			}
-			arg := Eval(scope, v)
-			evalArgs = append(evalArgs, arg)
+			evalArgs = append(evalArgs, Eval(scope, v, false))
 		}
 
-		args_str := (*argsToString(evalArgs)).String()
-		fn_name := callValue.Callee.(map[string]interface{})["text"]
+		fn := Eval(scope, callValue.Callee, false)
 
-		if _, ok := fn_name.(string); !ok {
-			fn_name = "anonymous"
-		}
-
-		if ok := args_str == ""; ok {
-			big, _ := rand.Int(rand.Reader, big.NewInt(1e6))
-			args_str = big.String() + fmt.Sprintf("%d", len(evalArgs))
-		}
-
-		if cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)] != nil {
-			return cache_scope[fmt.Sprintf("%s#%v", fn_name.(string), args_str)]
-		}
-
-		fn := Eval(scope, callValue.Callee)
-
-		if reflect.TypeOf(fn).Kind().String() != "func" {
+		closure, ok := fn.(Closure)
+		if !ok {
 			return fn
 		}
 
-		result := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(Term)
+		cache_key := fmt.Sprintf("%d#%s", closure.id, argsToString(evalArgs).String())
 
-		if !impure_fn {
-			cache_scope[fmt.Sprintf("%s#%s", fn_name.(string), args_str)] = result
+		// Always check the cache first — a hit is valid regardless of tail position.
+		if !closure.impure {
+			if cached, hit := cache_scope[cache_key]; hit {
+				return cached
+			}
+		}
+
+		// In tail position: hand the call back to the nearest trampoline instead
+		// of adding another stack frame.
+		if tail {
+			return TailCall{closure: closure, args: evalArgs}
+		}
+
+		// Non-tail position: run the trampoline here and cache the final result.
+		result := trampoline(closure, evalArgs)
+
+		if !closure.impure {
+			cache_scope[cache_key] = result
 		}
 
 		return result
@@ -208,7 +236,11 @@ func Eval(scope Scope, termData Term) Term {
 
 		decode(termData, &functionValue)
 
-		return func(args []Term) Term {
+		impure := containsPrint(functionValue.Value)
+		closureSeq++
+		id := closureSeq
+
+		fn := func(args []Term) Term {
 			if len(args) != len(functionValue.Parameters) {
 				Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
 			}
@@ -223,15 +255,25 @@ func Eval(scope Scope, termData Term) Term {
 				isolatedScope[fmt.Sprintf("%s#%v", v.Text, i+1)] = args[i]
 			}
 
-			return Eval(isolatedScope, functionValue.Value)
+			// The function body is always in tail position.
+			return Eval(isolatedScope, functionValue.Value, true)
 		}
+
+		return Closure{fn: fn, impure: impure, id: id}
 	case KindLet:
-		var letValue Let
-
-		decode(termData, &letValue)
-
-		scope[letValue.Name.Text] = Eval(scope, letValue.Value)
-		return Eval(scope, letValue.Next)
+		// Iterate over the let-chain instead of recursing so that long
+		// sequences of let bindings don't exhaust the goroutine stack.
+		for {
+			var letValue Let
+			decode(termData, &letValue)
+			scope[letValue.Name.Text] = Eval(scope, letValue.Value, false)
+			termData = letValue.Next
+			next, ok := termData.(map[string]interface{})
+			if !ok || next["kind"] != string(KindLet) {
+				break
+			}
+		}
+		return Eval(scope, termData, tail)
 	case KindVar:
 		var varValue Var
 
@@ -249,6 +291,54 @@ func Eval(scope Scope, termData Term) Term {
 	}
 
 	return nil
+}
+
+// equalTerms compares two runtime values by type and value, never by string representation.
+func equalTerms(lhs, rhs interface{}) bool {
+	switch l := lhs.(type) {
+	case int32:
+		r, ok := rhs.(int32)
+		return ok && l == r
+	case string:
+		r, ok := rhs.(string)
+		return ok && l == r
+	case bool:
+		r, ok := rhs.(bool)
+		return ok && l == r
+	case Tuple:
+		r, ok := rhs.(Tuple)
+		return ok && equalTerms(l.First, r.First) && equalTerms(l.Second, r.Second)
+	default:
+		return false
+	}
+}
+
+// containsPrint recursively checks whether a raw AST node contains a Print node.
+func containsPrint(term Term) bool {
+	m, ok := term.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if kind, _ := m["kind"].(string); kind == "Print" {
+		return true
+	}
+	for _, v := range m {
+		switch child := v.(type) {
+		case map[string]interface{}:
+			if containsPrint(child) {
+				return true
+			}
+		case []interface{}:
+			for _, elem := range child {
+				if childMap, ok := elem.(map[string]interface{}); ok {
+					if containsPrint(childMap) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func toInt(lhs interface{}, rhs interface{}, operation string, loc Location) (int32, int32) {
@@ -324,7 +414,7 @@ func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
 func toString(value interface{}) string {
 	if reflect.TypeOf(value).Kind() == reflect.Int32 {
 		return strconv.Itoa(int(value.(int32)))
-	} else if reflect.TypeOf(value).Kind().String() == "func" {
+	} else if _, ok := value.(Closure); ok {
 		return "<#closure>"
 	} else if reflect.TypeOf(value) == reflect.TypeOf(Tuple{}) {
 		return fmt.Sprintf("(%v, %v)", toString(value.(Tuple).First), toString(value.(Tuple).Second))
@@ -352,8 +442,8 @@ func argsToString(args []Term) *bytes.Buffer {
 		var value string
 		if reflect.TypeOf(args[i]).Kind() == reflect.Int32 {
 			value = strconv.Itoa(int(args[i].(int32)))
-		} else if reflect.TypeOf(args[i]).Kind().String() == "func" {
-			value = ""
+		} else if c, ok := args[i].(Closure); ok {
+			value = fmt.Sprintf("closure%d", c.id)
 		} else if reflect.TypeOf(args[i]) == reflect.TypeOf(Tuple{}) {
 			value = fmt.Sprintf("(%v, %v)", toString(args[i].(Tuple).First), toString(args[i].(Tuple).Second))
 		} else if reflect.TypeOf(args[i]).Kind() == reflect.Bool {
