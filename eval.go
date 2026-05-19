@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
 	"math/big"
 	"reflect"
+	"strconv"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/omurilo/rinha-compiler/ast"
@@ -12,27 +15,30 @@ import (
 
 type Scope map[string]ast.Term
 
+// TupleVal is the runtime representation of a tuple (holds evaluated values).
+type TupleVal struct {
+	First  interface{}
+	Second interface{}
+}
+
+var cache_scope = make(map[string]ast.Term)
+
 func Eval(scope Scope, termData ast.Term) ast.Term {
 	kind := termData.(map[string]interface{})["kind"].(string)
-
-	// fmt.Println(kind, termData)
 
 	switch ast.TermKind(kind) {
 	case ast.KindInt:
 		var intValue ast.Int
 		decode(termData, &intValue)
+		return intValue.Value
 
-		fmt.Println(intValue, termData)
-
-		return big.NewInt(intValue.Value)
 	case ast.KindStr:
 		var strValue ast.Str
 		decode(termData, &strValue)
-
 		return strValue.Value
+
 	case ast.KindBinary:
 		var binaryValue ast.Binary
-
 		decode(termData, &binaryValue)
 
 		lhs := Eval(scope, binaryValue.LHS)
@@ -41,36 +47,33 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 
 		switch op {
 		case ast.Add:
-			if lhsInt, ok := lhs.(*big.Int); ok {
-				if rhsInt, ok := rhs.(*big.Int); ok {
-					return new(big.Int).Add(lhsInt, rhsInt)
-				} else if rhsStr, ok := rhs.(string); ok {
-					return fmt.Sprintf("%d%s", lhsInt, rhsStr)
-				}
-			} else if lhsStr, ok := lhs.(string); ok {
-				if rhsInt, ok := rhs.(*big.Int); ok {
-					return fmt.Sprintf("%s%d", lhsStr, rhsInt)
-				} else if rhsStr, ok := rhs.(string); ok {
-					return fmt.Sprintf("%s%s", lhsStr, rhsStr)
-				}
+			lhsType := reflect.TypeOf(lhs).Kind()
+			rhsType := reflect.TypeOf(rhs).Kind()
+			if lhsType == reflect.String || rhsType == reflect.String {
+				var str bytes.Buffer
+				str.WriteString(toString(lhs))
+				str.WriteString(toString(rhs))
+				return str.String()
 			}
-
+			if lhsType == reflect.Int32 && rhsType == reflect.Int32 {
+				return lhs.(int32) + rhs.(int32)
+			}
 			runtime.Error(binaryValue.Location, "invalid add operation")
 		case ast.Sub:
 			lhsInt, rhsInt := toInt(lhs, rhs, "sub", binaryValue.Location)
-			return new(big.Int).Sub(lhsInt, rhsInt)
+			return lhsInt - rhsInt
 		case ast.Mul:
 			lhsInt, rhsInt := toInt(lhs, rhs, "mul", binaryValue.Location)
-			return new(big.Int).Mul(lhsInt, rhsInt)
+			return lhsInt * rhsInt
 		case ast.Div:
 			lhsInt, rhsInt := toInt(lhs, rhs, "div", binaryValue.Location)
-			if rhsInt.Cmp(big.NewInt(0)) == 0 {
+			if rhsInt == 0 {
 				runtime.Error(binaryValue.Location, "division by zero")
 			}
-			return new(big.Int).Div(lhsInt, rhsInt)
+			return lhsInt / rhsInt
 		case ast.Rem:
 			lhsInt, rhsInt := toInt(lhs, rhs, "rem", binaryValue.Location)
-			return new(big.Int).Rem(lhsInt, rhsInt)
+			return lhsInt % rhsInt
 		case ast.Eq:
 			return fmt.Sprintf("%v", lhs) == fmt.Sprintf("%v", rhs)
 		case ast.Neq:
@@ -83,249 +86,248 @@ func Eval(scope Scope, termData ast.Term) ast.Term {
 			return lhsBool || rhsBool
 		case ast.Lt:
 			lhsInt, rhsInt := toInt(lhs, rhs, "lt", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result < 0
+			return lhsInt < rhsInt
 		case ast.Gt:
 			lhsInt, rhsInt := toInt(lhs, rhs, "gt", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result > 0
+			return lhsInt > rhsInt
 		case ast.Lte:
 			lhsInt, rhsInt := toInt(lhs, rhs, "lte", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result <= 0
+			return lhsInt <= rhsInt
 		case ast.Gte:
 			lhsInt, rhsInt := toInt(lhs, rhs, "gte", binaryValue.Location)
-			result := lhsInt.Cmp(rhsInt)
-			return result >= 0
+			return lhsInt >= rhsInt
 		}
+
 	case ast.KindPrint:
 		var printValue ast.Print
 		decode(termData, &printValue)
 
 		value := Eval(scope, printValue.Value)
-		if reflect.TypeOf(value).Kind().String() == "func" {
+		if reflect.TypeOf(value).Kind() == reflect.Func {
 			fmt.Println("<#closure>")
+		} else if tv, ok := value.(TupleVal); ok {
+			fmt.Printf("(%v, %v)\n", toString(tv.First), toString(tv.Second))
 		} else {
 			fmt.Println(value)
 		}
 		return value
+
 	case ast.KindBool:
 		var boolValue ast.Bool
 		decode(termData, &boolValue)
-
 		return boolValue.Value
+
 	case ast.KindIf:
 		var ifValue ast.If
 		decode(termData, &ifValue)
 
 		value := Eval(scope, ifValue.Condition)
-		// fmt.Println("value da condition", value, ifValue.Condition)
-		if reflect.TypeOf(value).Kind() != reflect.Bool {
-			switch value := value.(type) {
-			case *big.Int:
-				if new(big.Int).Set(value).Cmp(big.NewInt(0)) != 0 {
-					return Eval(scope, ifValue.Then)
-				} else {
-					return Eval(scope, ifValue.Otherwise)
-				}
-			case string:
-				if value != "" {
-					return Eval(scope, ifValue.Then)
-				} else {
-					return Eval(scope, ifValue.Otherwise)
-				}
-			}
-		} else if bool(value.(bool)) {
+		boolean, _ := toBool(value, value)
+		if boolean {
 			return Eval(scope, ifValue.Then)
-		} else {
-			return Eval(scope, ifValue.Otherwise)
 		}
+		if ifValue.Otherwise == nil {
+			return nil
+		}
+		return Eval(scope, ifValue.Otherwise)
+
 	case ast.KindFirst:
 		var firstValue ast.First
-		var firstValueValue ast.Tuple
-
 		decode(termData, &firstValue)
-		decode(firstValue.Value, &firstValueValue)
 
-		if firstValueValue.Kind != ast.KindTuple {
-			runtime.Error(firstValueValue.Location, "Runtime error")
+		value := Eval(scope, firstValue.Value)
+		if tv, ok := value.(TupleVal); ok {
+			return tv.First.(ast.Term)
 		}
-		first := firstValueValue.First
-		value := Eval(scope, first)
-		return value
+		runtime.Error(firstValue.Location, "Runtime error: first requires a tuple")
+
 	case ast.KindSecond:
 		var secondValue ast.Second
-		var secondValueValue ast.Tuple
-
 		decode(termData, &secondValue)
-		decode(secondValue.Value, &secondValueValue)
 
-		if secondValueValue.Kind != ast.KindTuple {
-			runtime.Error(secondValueValue.Location, "Runtime error")
+		value := Eval(scope, secondValue.Value)
+		if tv, ok := value.(TupleVal); ok {
+			return tv.Second.(ast.Term)
 		}
-		second := secondValueValue.Second
-		value := Eval(scope, second)
-		return value
+		runtime.Error(secondValue.Location, "Runtime error: second requires a tuple")
+
 	case ast.KindTuple:
 		var tupleValue ast.Tuple
-
 		decode(termData, &tupleValue)
 
 		first := Eval(scope, tupleValue.First)
 		second := Eval(scope, tupleValue.Second)
+		return TupleVal{First: first, Second: second}
 
-		fmt.Println("tuple", first, second, tupleValue.First)
-
-		return fmt.Sprintf("(%v, %v)", first, second)
 	case ast.KindCall:
 		var callValue ast.Call
-
 		decode(termData, &callValue)
-		// fmt.Println("call function", scope, callValue.Arguments)
-		fn := reflect.ValueOf(Eval(scope, callValue.Callee))
+
+		impure := containsPrint(termData)
 
 		var evalArgs []ast.Term
-
 		for _, v := range callValue.Arguments {
-			// fmt.Println("call value arguments", scope, v)
 			evalArgs = append(evalArgs, Eval(scope, v))
 		}
 
-		return fn.Call([]reflect.Value{reflect.ValueOf(evalArgs), reflect.ValueOf(scope)})[0].Interface().(ast.Term)
+		args_str := argsToString(evalArgs).String()
+		fn_name := callValue.Callee.(map[string]interface{})["text"]
+		if _, ok := fn_name.(string); !ok {
+			fn_name = "anonymous"
+		}
+		if args_str == "" {
+			n, _ := rand.Int(rand.Reader, big.NewInt(1e6))
+			args_str = n.String() + fmt.Sprintf("%d", len(evalArgs))
+		}
+
+		cacheKey := fmt.Sprintf("%s#%s", fn_name.(string), args_str)
+		if cached := cache_scope[cacheKey]; cached != nil {
+			return cached
+		}
+
+		fn := Eval(scope, callValue.Callee)
+		if reflect.TypeOf(fn).Kind() != reflect.Func {
+			return fn
+		}
+
+		result := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(evalArgs)})[0].Interface().(ast.Term)
+		if !impure {
+			cache_scope[cacheKey] = result
+		}
+		return result
+
 	case ast.KindFunction:
 		var functionValue ast.Function
-
 		decode(termData, &functionValue)
 
-		return func(args []ast.Term, fScope Scope) ast.Term {
+		return func(args []ast.Term) ast.Term {
 			if len(args) != len(functionValue.Parameters) {
 				runtime.Error(functionValue.Location, fmt.Sprintf("Expected %d arguments, but got %d", len(functionValue.Parameters), len(args)))
 			}
 			isolatedScope := Scope{}
-			for k, v := range fScope {
+			for k, v := range scope {
 				isolatedScope[k] = v
 			}
 			for i, v := range functionValue.Parameters {
 				isolatedScope[v.Text] = args[i]
 			}
-
-			// fmt.Println("isolatedScope", isolatedScope, "value", functionValue)
-
 			return Eval(isolatedScope, functionValue.Value)
 		}
+
 	case ast.KindLet:
 		var letValue ast.Let
-
 		decode(termData, &letValue)
 
 		scope[letValue.Name.Text] = Eval(scope, letValue.Value)
 		return Eval(scope, letValue.Next)
+
 	case ast.KindVar:
 		var varValue ast.Var
-
 		decode(termData, &varValue)
-		// fmt.Println("varValue", varValue.Text, scope)
-		var (
-			value ast.Term
-			ok    bool
-		)
-		if value, ok = scope[varValue.Text]; !ok {
+
+		value, ok := scope[varValue.Text]
+		if !ok {
 			runtime.Error(varValue.Location, fmt.Sprintf("undefined variable %s", varValue.Text))
 		}
-		// fmt.Println("value", value)
 		return value
 	}
 
 	return nil
 }
 
-func toInt(lhs interface{}, rhs interface{}, operation string, loc ast.Location) (*big.Int, *big.Int) {
-	var lhsInt int64
-	var rhsInt int64
-	var okLhs bool = false
-	var okRhs bool = false
+func containsPrint(term ast.Term) bool {
+	if term == nil {
+		return false
+	}
+	node, ok := term.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if node["kind"] == "Print" {
+		return true
+	}
+	for _, v := range node {
+		if child, ok := v.(map[string]interface{}); ok {
+			if containsPrint(child) {
+				return true
+			}
+		}
+		if children, ok := v.([]interface{}); ok {
+			for _, c := range children {
+				if containsPrint(c) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
-	if _, ok := lhs.(int64); ok {
-		lhsInt = lhs.(int64)
+func toInt(lhs interface{}, rhs interface{}, operation string, loc ast.Location) (int32, int32) {
+	var lhsInt, rhsInt int32
+	var okLhs, okRhs bool
+
+	if v, ok := lhs.(int32); ok {
+		lhsInt = v
 		okLhs = true
 	}
-
-	if _, ok := rhs.(int64); ok {
-		rhsInt = rhs.(int64)
-		okRhs = true
-	}
-
-	if _, ok := lhs.(*big.Int); ok {
-		lhsInt = lhs.(*big.Int).Int64()
-		okLhs = true
-	}
-
-	if _, ok := rhs.(*big.Int); ok {
-		rhsInt = rhs.(*big.Int).Int64()
+	if v, ok := rhs.(int32); ok {
+		rhsInt = v
 		okRhs = true
 	}
 
 	if !okLhs || !okRhs {
 		runtime.Error(loc, fmt.Sprintf("Invalid %s operation", operation))
 	}
-
-	return big.NewInt(lhsInt), big.NewInt(rhsInt)
+	return lhsInt, rhsInt
 }
 
 func toBool(lhs interface{}, rhs interface{}) (bool, bool) {
-	var okLhs bool = false
-	var okRhs bool = false
-
-	if _, ok := lhs.(int64); ok {
-		if lhs != 0 {
-			okLhs = true
+	toB := func(v interface{}) bool {
+		switch val := v.(type) {
+		case bool:
+			return val
+		case int32:
+			return val != 0
+		case string:
+			return val != ""
 		}
+		return false
 	}
+	return toB(lhs), toB(rhs)
+}
 
-	if _, ok := rhs.(int64); ok {
-		if rhs != 0 {
-			okRhs = true
-		}
+func toString(value interface{}) string {
+	if value == nil {
+		return ""
 	}
-
-	if _, ok := lhs.(string); ok {
-		if lhs != "" {
-			okLhs = true
-		}
+	switch v := value.(type) {
+	case int32:
+		return strconv.Itoa(int(v))
+	case bool:
+		return strconv.FormatBool(v)
+	case string:
+		return v
+	case TupleVal:
+		return fmt.Sprintf("(%v, %v)", toString(v.First), toString(v.Second))
 	}
-
-	if _, ok := rhs.(string); ok {
-		if rhs != "" {
-			okRhs = true
-		}
+	if reflect.TypeOf(value).Kind() == reflect.Func {
+		return "<#closure>"
 	}
+	return fmt.Sprintf("%v", value)
+}
 
-	if _, ok := lhs.(bool); ok {
-		okLhs = lhs.(bool)
+func argsToString(args []ast.Term) *bytes.Buffer {
+	var buf bytes.Buffer
+	for _, arg := range args {
+		buf.WriteString(toString(arg))
 	}
-
-	if _, ok := rhs.(bool); ok {
-		okRhs = rhs.(bool)
-	}
-
-	if lhs == nil {
-		okLhs = false
-	}
-
-	if rhs == nil {
-		okRhs = false
-	}
-
-	return okLhs, okRhs
+	return &buf
 }
 
 func decode(term ast.Term, value ast.Term) ast.Term {
-	err := mapstructure.Decode(term, &value)
-
-	if err != nil {
-		// fmt.Println("Error:", err)
+	if err := mapstructure.Decode(term, &value); err != nil {
 		return nil
 	}
-
 	return value
 }

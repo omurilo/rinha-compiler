@@ -40,7 +40,7 @@ type Term interface{}
 
 type Int struct {
 	Kind     TermKind `json:"kind"`
-	Value    int64    `json:"value"`
+	Value    int32    `json:"value"`
 	Location Location `json:"location"`
 }
 

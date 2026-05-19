@@ -2,12 +2,10 @@ package lexer
 
 import (
 	"fmt"
-	"reflect"
-	"regexp"
+	"unicode/utf8"
 
 	"github.com/davyxu/golexer"
 	"github.com/omurilo/rinha-compiler/ast"
-	// "github.com/omurilo/rinha-compiler/runtime"
 )
 
 var KEYWORDS = map[string]string{
@@ -96,6 +94,44 @@ const (
 
 type CustomParser struct {
 	*golexer.Parser
+	lineOffsets []int
+	startCols   []int // Col value at the start of each line (golexer-inflated)
+	source      string
+}
+
+// buildLineInfo simulates golexer's LineEndMatcher to compute, for each line:
+//   - lineOffsets[i]: byte offset of the first char of line i+1
+//   - startCols[i]:   the Col value at the start of line i+1
+//
+// golexer's LineEndMatcher processes ALL consecutive newline chars in one call,
+// calling increaseLine() once per \n (resets Col=1) then ConsumeMulti(runLen)
+// where runLen = total chars in the run (including \r). This means the starting
+// Col for lines inside a multi-newline run is 1+runLen, not 1.
+func buildLineInfo(source string) (lineOffsets []int, startCols []int) {
+	lineOffsets = []int{0}
+	startCols = []int{1} // line 1: Col starts at 1 (never reset)
+
+	i := 0
+	for i < len(source) {
+		if source[i] == '\n' || source[i] == '\r' {
+			runStart := i
+			for i < len(source) && (source[i] == '\n' || source[i] == '\r') {
+				i++
+			}
+			runLen := i - runStart
+			startingCol := 1 + runLen
+
+			for j := runStart; j < i; j++ {
+				if source[j] == '\n' {
+					lineOffsets = append(lineOffsets, j+1)
+					startCols = append(startCols, startingCol)
+				}
+			}
+		} else {
+			i++
+		}
+	}
+	return
 }
 
 func NewCustomParser(filename string) *CustomParser {
@@ -134,8 +170,6 @@ func NewCustomParser(filename string) *CustomParser {
 	l.AddMatcher(golexer.NewSignMatcher(Token_Or, "||"))
 	l.AddMatcher(golexer.NewSignMatcher(Token_And, "&&"))
 
-	l.AddMatcher(NewTupleMatcher(Token_Tuple))
-
 	l.AddMatcher(golexer.NewSignMatcher(Token_LParen, "("))
 	l.AddMatcher(golexer.NewSignMatcher(Token_RParen, ")"))
 	l.AddMatcher(golexer.NewSignMatcher(Token_LBrace, "{"))
@@ -156,128 +190,82 @@ func NewCustomParser(filename string) *CustomParser {
 func Initialize(program string, filename string) *CustomParser {
 	p := NewCustomParser(filename)
 	p.Lexer().Start(program)
-
+	p.source = program
+	p.lineOffsets, p.startCols = buildLineInfo(program)
 	return p
 }
 
 func (p *CustomParser) Next() Token {
-	var token Token
 	p.NextToken()
-	token = p.parseTokenMatcher()
-
-	return token
+	return p.parseTokenMatcher()
 }
 
 func (p *CustomParser) Tokenize() {
 	token := p.Next()
-
 	for p.TokenID() != 0 {
 		fmt.Println(token)
 		token = p.Next()
 	}
 }
 
+// tokenLoc computes the byte-offset location of the current token.
+// rawLen is the number of RUNES the token occupies in source (value + 2 for strings).
+// We convert rune offset to byte offset to handle multi-byte UTF-8 characters.
+func (p *CustomParser) tokenLoc(rawRuneLen int) ast.Location {
+	pos := p.TokenPos()
+	end := 0
+	if pos.Line >= 1 && pos.Line-1 < len(p.lineOffsets) {
+		lineByteStart := p.lineOffsets[pos.Line-1]
+		startCol := p.startCols[pos.Line-1]
+		runeOffset := pos.Col - startCol // runes consumed on this line up to end of token
+		end = p.runeOffsetToByteOffset(lineByteStart, runeOffset)
+	}
+	start := end - runeLen2ByteLen(p.source, end, rawRuneLen)
+	if start < 0 {
+		start = 0
+	}
+	return ast.Location{Filename: pos.SourceName, Start: uint32(start), End: uint32(end)}
+}
+
+// runeOffsetToByteOffset converts a rune count from lineByteStart to a byte offset.
+func (p *CustomParser) runeOffsetToByteOffset(lineByteStart, runeCount int) int {
+	bytePos := lineByteStart
+	for i := 0; i < runeCount && bytePos < len(p.source); i++ {
+		_, size := utf8.DecodeRuneInString(p.source[bytePos:])
+		bytePos += size
+	}
+	return bytePos
+}
+
+// runeLen2ByteLen returns the byte length of rawRuneLen runes ending at byteEnd.
+func runeLen2ByteLen(source string, byteEnd, runeLen int) int {
+	byteStart := byteEnd
+	for i := 0; i < runeLen && byteStart > 0; i++ {
+		_, size := utf8.DecodeLastRuneInString(source[:byteStart])
+		byteStart -= size
+	}
+	return byteEnd - byteStart
+}
+
 func (p *CustomParser) parseTokenMatcher() Token {
 	var token Token
 
 	if p.TokenID() != 0 {
+		val := p.TokenValue()
+		runeLen := utf8.RuneCountInString(val)
 		switch p.MatcherName() {
 		case "NumeralMatcher":
-			token = Token{Type: ":NUMBER", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+			token = Token{Type: ":NUMBER", Value: val, Location: p.tokenLoc(runeLen)}
 		case "StringMatcher":
-			token = Token{Type: ":STRING", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+			token = Token{Type: ":STRING", Value: val, Location: p.tokenLoc(runeLen + 2)}
 		case "SignMatcher":
-			token = Token{Type: SYMBOLS[p.TokenValue()], Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+			token = Token{Type: SYMBOLS[val], Value: val, Location: p.tokenLoc(runeLen)}
 		case "KeywordMatcher":
-			token = Token{Type: KEYWORDS[p.TokenValue()], Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+			token = Token{Type: KEYWORDS[val], Value: val, Location: p.tokenLoc(runeLen)}
 		case "IdentifierMatcher":
-			token = Token{Type: ":IDENTIFIER", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
-		case "TupleMatcher":
-			token = Token{Type: ":TUPLE", Value: p.TokenValue(), Location: parse_location(p.TokenPos())}
+			token = Token{Type: ":IDENTIFIER", Value: val, Location: p.tokenLoc(runeLen)}
 		}
 	}
 
 	return token
 }
-
-func parse_location(position golexer.TokenPos) ast.Location {
-	return ast.Location{Filename: position.SourceName, Start: uint32(position.Line), End: uint32(position.Col)}
-}
-
-type baseMatcher struct {
-	id int
-}
-
-type TupleMatcher struct {
-	baseMatcher
-	word []rune
-}
-
-func (b *baseMatcher) ID() int {
-	return b.id
-}
-
-func (tpm *TupleMatcher) String() string {
-	return fmt.Sprintf("%s('%s')", reflect.TypeOf(tpm).Elem().Name(), string(tpm.word))
-}
-
-func (tpm *TupleMatcher) Match(tz *golexer.Tokenizer) (golexer.Token, error) {
-	re := regexp.MustCompile(`\(([^(),]+),([^(),]+)\)`)
-	src_str := tz.Src()[tz.Index():]
-	match := re.FindString(string(src_str))
-
-	if (tz.Count() - tz.Index()) < len(match) {
-		return golexer.EmptyToken, nil
-	}
-
-	if len(src_str) > 1 && string(src_str[:2]) != "((" {
-		tz.ConsumeMulti(len(match))
-		return golexer.NewToken(tpm, tz, match, ""), nil
-	}
-
-	return golexer.EmptyToken, nil
-}
-
-func NewTupleMatcher(id int) golexer.TokenMatcher {
-	self := &TupleMatcher{
-		baseMatcher: baseMatcher{id},
-	}
-
-	return self
-}
-
-// func parse_trash(token string) bool {
-// 	trash_regex := regexp.MustCompile(`\s+|//[^\n\r]*[\n\r]*|/\*[^*]*\*+(?:[^/*][^*]*\*+)*/`)
-// 	ok := trash_regex.MatchString(token)
-// 	return ok
-// }
-//
-// func parse_identifier(token string) bool {
-// 	identifier_regex := regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9/_]*`)
-// 	ok := identifier_regex.MatchString(token)
-// 	return ok
-// }
-//
-// func parse_strings(token string) bool {
-// 	string_regex := regexp.MustCompile(`"(\\\\|\\"|[^"\\])*"`)
-// 	ok := string_regex.MatchString(token)
-// 	return ok
-// }
-//
-// func parse_numbers(token string) bool {
-// 	number_regex := regexp.MustCompile(`\d+`)
-// 	ok := number_regex.MatchString(token)
-// 	return ok
-// }
-//
-// func parse_symbols(token string) bool {
-// 	symbols_regex := regexp.MustCompile(`[\(\)\+\-\*\/\<\>\;\{\}\,]|\!?\=\=?\>?|\|\||\&\&`)
-// 	ok := symbols_regex.MatchString(token)
-// 	return ok
-// }
-//
-// func parse_keywords(token string) bool {
-// 	keywords_regex := regexp.MustCompile(`^(print|first|second|true|false|if|else|fn|let)`)
-// 	ok := keywords_regex.MatchString(token)
-// 	return ok
-// }
